@@ -8,36 +8,45 @@ extern crate argonaut;
 mod maps;
 mod dero;
 
-use std::io;
+use std::io::{self, Write};
 use std::env;
-use std::process::Command;
+use std::process::{self, Command, Stdio};
 use std::collections::{HashMap};
 use argonaut::{Parser, Arg, StructuredArgument, generate_help};
 use dero::deromanize;
 
 fn copy_to_clipboard(text: &str) {
-    println!("Copying '{}' to the clipboard...", text);
-    //panic!("Needs to pipe it to stdin!");
-    /*Command::new("pbcopy").arg(text)
-        .output().unwrap_or_else(|e| {
-            panic!("Could not copy text with pbcopy: {}", e)
+    if cfg!(target_os = "macos") {
+        //println!("Copying '{}' to the clipboard...", text);
+        let mut child = Command::new("pbcopy").arg(text).stdin(Stdio::piped()).spawn()
+            .expect("Could not run pbcopy");
+        if let Some(ref mut stdin) = child.stdin {
+            stdin.write_all(text.as_bytes())
+                .expect("Could not write to pbcopy");
+        } else { 
+            unreachable!();
         }
-    );*/
+        child.wait().expect("Error while running pbcopy");
+    } else {
+        println!("{}", text);
+    }
 }
 
 static PUNCTUATION: phf::Set<char> = phf_set! {
-    '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+', '(', ')', '[', ']', '{', '}',
+    '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+', 
+    '(', ')', '[', ']', '{', '}',
     '@', '*', '&', ':', ';', '_', '^', '`', '~', '$', '|'
 };
 fn allow_punctuation(ch: char) -> bool {
     ch.is_whitespace() || PUNCTUATION.contains(&ch)
 }
 
-fn deromanize_single(text: &str) {
+fn deromanize_single(text: &str) -> bool {
     use dero::DeromanizeError::*;
     match deromanize(text, allow_punctuation) {
         Ok(output) => {
             copy_to_clipboard(&output);
+            true
         },
         Err(error) => {
             let position = match error {
@@ -52,7 +61,8 @@ fn deromanize_single(text: &str) {
                     position
                 },
                 InvalidLetter { letter, position } => {
-                    println!("Expected a valid consonant or vowel at position {}, found {}:",
+                    println!("Expected a valid consonant or vowel at position \
+                        {}, found {}:",
                         position + 1, letter);
                     position
                 },
@@ -70,6 +80,7 @@ fn deromanize_single(text: &str) {
             }
             pointer.push('^');
             println!("{}", pointer);
+            false
         }
     }
 }
@@ -98,7 +109,8 @@ fn main() {
     let a_text = Arg::named_and_short("text", 't').single()
         .add_help("A single text string to deromanize.");
     let a_pipe_mode = Arg::named("pipe-mode").interrupt()
-        .add_help("Start the program in pipe mode, where it reads from stdin and prints the output to stdout.");
+        .add_help("Start the program in pipe mode, where it reads from stdin \
+        and prints the output to stdout.");
     let a_version = Arg::named("version").interrupt()
         .add_help("Show the version of this tool.");
     let a_help = Arg::named_and_short("help", 'h').interrupt()
@@ -116,7 +128,11 @@ fn main() {
                 return;
             },
             Ok(Single { name: "text", parameter }) => {
-                return deromanize_single(parameter);
+                if deromanize_single(parameter) {
+                    return;
+                } else {
+                    process::exit(1);
+                }
             },
             Ok(Interrupt { name: "pipe-mode" }) => {
                 return println!("Reading stuff from stdin...");
