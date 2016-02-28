@@ -25,6 +25,54 @@ fn copy_to_clipboard(text: &str) {
     );*/
 }
 
+static PUNCTUATION: phf::Set<char> = phf_set! {
+    '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+', '(', ')', '[', ']', '{', '}',
+    '@', '*', '&', ':', ';', '_', '^', '`', '~', '$', '|'
+};
+fn allow_punctuation(ch: char) -> bool {
+    ch.is_whitespace() || PUNCTUATION.contains(&ch)
+}
+
+fn deromanize_single(text: &str) {
+    use dero::DeromanizeError::*;
+    match deromanize(text, allow_punctuation) {
+        Ok(output) => {
+            copy_to_clipboard(&output);
+        },
+        Err(error) => {
+            let position = match error {
+                InvalidConsonant { letter, position } => {
+                    println!("Expected a valid consonant at position {}, found {}:",
+                        position + 1, letter);
+                    position
+                },
+                InvalidVowel { letter, position } => {
+                    println!("Expected a valid vowel at position {}, found {}:",
+                        position + 1, letter);
+                    position
+                },
+                InvalidLetter { letter, position } => {
+                    println!("Expected a valid consonant or vowel at position {}, found {}:",
+                        position + 1, letter);
+                    position
+                },
+                MissingFinalVowel { position } => {
+                    println!("Expected a vowel at position {}", position + 1);
+                    position
+                }
+            };
+            //let mut example: String = text.chars().take(position+1).collect();
+            //println!("{}", example);
+            println!("{}", text);
+            let mut pointer = String::new();
+            for i in 0..position {
+                pointer.push('~');
+            }
+            pointer.push('^');
+            println!("{}", pointer);
+        }
+    }
+}
 
 fn start_interactive(copy: bool) {
     println!("Welcome to the deromanization tool.");
@@ -33,10 +81,7 @@ fn start_interactive(copy: bool) {
     loop {
         print!("$ ");
         io::stdin().read_line(&mut input).unwrap();
-        let output = deromanize(&input).unwrap();
-        if copy {
-            copy_to_clipboard(&output);
-        }
+        deromanize_single(&input);
     }
 }
 
@@ -71,9 +116,7 @@ fn main() {
                 return;
             },
             Ok(Single { name: "text", parameter }) => {
-                let output = deromanize(parameter).unwrap();
-                copy_to_clipboard(&output);
-                return;
+                return deromanize_single(parameter);
             },
             Ok(Interrupt { name: "pipe-mode" }) => {
                 return println!("Reading stuff from stdin...");

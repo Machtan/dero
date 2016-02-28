@@ -16,7 +16,7 @@ pub enum DeromanizeError {
     InvalidConsonant { letter: char, position: usize },
     InvalidVowel { letter: char, position: usize },
     InvalidLetter { letter: char, position: usize },
-    MissingFinalVowel,
+    MissingFinalVowel { position: usize },
 }
 
 fn read_consonant(text: &str, i: usize, indices: &[usize])
@@ -70,11 +70,73 @@ fn push_block(text: &mut String, initial: u32, vowel: u32, first_final: Option<u
         }
     }
     value += _final;
-    println!("Value: {}, Char: {}", value, char::from_u32(value).unwrap());
+    //println!("Value: {}, Char: {}", value, char::from_u32(value).unwrap());
     text.push(char::from_u32(value).unwrap());
 }
 
-pub fn deromanize(text: &str) -> Result<String, DeromanizeError> {
+fn deromanize_part(part: &str, start_index: usize) -> Result<String, DeromanizeError> {
+    use self::DeromanizeError::*;
+    match deromanize_validated(part) {
+        Ok(deromanized) => {
+            Ok(deromanized)
+        },
+        Err(InvalidConsonant { letter, position }) => {
+            Err(InvalidConsonant { 
+                letter: letter, 
+                position: start_index + position,
+            })
+        },
+        Err(InvalidVowel { letter, position }) => {
+            Err(InvalidVowel { 
+                letter: letter, 
+                position: start_index + position,
+            })
+        },
+        Err(InvalidLetter { letter, position }) => {
+            Err(InvalidLetter { 
+                letter: letter, 
+                position: start_index + position,
+            })
+        },
+        Err(MissingFinalVowel { position }) => {
+            Err(MissingFinalVowel { position: start_index + position })
+        }
+    }
+}
+
+pub fn deromanize<F>(text: &str, allow_char: F)
+        -> Result<String, DeromanizeError>
+        where F: Fn(char) -> bool {
+    use self::DeromanizeError::*;
+    let mut output = String::new();
+    let mut start = 0;
+    let mut start_char_index = 0;
+    let indices: Vec<_> = text.char_indices().collect();
+    for (n, &(i, ch)) in indices.iter().enumerate() {
+        if allow_char(ch) { // Check if it is time to break a block
+            //println!("Valid break char at {}: '{}'", n, ch);
+            if i != start { // Earlier stuff
+                let part = &text[start .. i];
+                let res = try!(deromanize_part(part, start_char_index));
+                output.push_str(&res);
+            }
+            output.push(ch);
+            start_char_index = n + 1;
+            if n != indices.len() - 1 {
+                start = indices[n + 1].0;
+            }
+        }
+    }
+    if start_char_index != indices.len() {
+        let part = &text[start ..];
+        //println!("Handling remainder...: part: ({}..): '{}'", start, part);
+        let res = try!(deromanize_part(part, start_char_index));
+        output.push_str(&res);
+    }
+    Ok(output)
+}
+
+pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
     use self::DeromanizeError::*;
     let mut output = String::new();
 
@@ -87,7 +149,7 @@ pub fn deromanize(text: &str) -> Result<String, DeromanizeError> {
     let indices: Vec<_> = text.char_indices().map(|(i, _)| i).collect();
     let mut i = 0;
     while i < indices.len() {
-        println!("{}: ({}: {})", i, pos, text.chars().nth(i).unwrap());
+        //println!("{}: ({}: {})", i, pos, text.chars().nth(i).unwrap());
         match pos {
             0 => { // Read initial
                 // Allow vowels with no consonant in the beginning of a block sequence
@@ -99,12 +161,11 @@ pub fn deromanize(text: &str) -> Result<String, DeromanizeError> {
                         i += len;
                         continue;
                     }
-                } else {
-                    let (index, len) = try!(read_consonant(text, i, &indices));
-                    initial = index;
-                    pos += 1;
-                    i += len;
                 }
+                let (index, len) = try!(read_consonant(text, i, &indices));
+                initial = index;
+                pos += 1;
+                i += len;
             },
             1 => { // Read Vowel
                 let (index, len) = try!(read_vowel(text, i, &indices));
@@ -188,7 +249,7 @@ pub fn deromanize(text: &str) -> Result<String, DeromanizeError> {
 
     match pos {
         1 => {
-            return Err(MissingFinalVowel);
+            return Err(MissingFinalVowel { position: indices.len() });
         },
         2 => {
             push_block(&mut output, initial, vowel, None, None);
