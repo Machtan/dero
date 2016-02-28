@@ -90,16 +90,27 @@ pub fn deromanize(text: &str) -> Result<String, DeromanizeError> {
         println!("{}: ({}: {})", i, pos, text.chars().nth(i).unwrap());
         match pos {
             0 => { // Read initial
-                let (index, len) = try!(read_consonant(text, i, &indices));
-                initial = index;
-                i += len;
-                pos += 1;
+                // Allow vowels with no consonant in the beginning of a block sequence
+                if i == 0 {
+                    if let Ok((index, len)) = read_vowel(text, i, &indices) {
+                        initial = CONSONANT_IEUNG;
+                        vowel = index;
+                        pos = 2;
+                        i += len;
+                        continue;
+                    }
+                } else {
+                    let (index, len) = try!(read_consonant(text, i, &indices));
+                    initial = index;
+                    pos += 1;
+                    i += len;
+                }
             },
             1 => { // Read Vowel
                 let (index, len) = try!(read_vowel(text, i, &indices));
                 vowel = index;
-                i += len;
                 pos += 1;
+                i += len;
             },
             2 => { // Read consonant (or the beginning of next block)
                 // Read a consonant
