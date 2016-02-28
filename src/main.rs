@@ -13,7 +13,10 @@ use std::env;
 use std::process::{self, Command, Stdio};
 use std::collections::{HashMap};
 use argonaut::{Parser, Arg, StructuredArgument, generate_help};
-use dero::deromanize;
+use dero::{deromanize, DeromanizeError};
+
+const MIN_BLOCK_VALUE: u32 = 44032;
+const MAX_BLOCK_VALUE: u32 = 55203;
 
 fn copy_to_clipboard(text: &str) {
     if cfg!(target_os = "macos") {
@@ -37,49 +40,70 @@ static PUNCTUATION: phf::Set<char> = phf_set! {
     '(', ')', '[', ']', '{', '}',
     '@', '*', '&', ':', ';', '_', '^', '`', '~', '$', '|'
 };
-fn allow_punctuation(ch: char) -> bool {
-    ch.is_whitespace() || PUNCTUATION.contains(&ch)
+
+#[inline(always)]
+fn is_punctuation(ch: char) -> bool {
+    PUNCTUATION.contains(&ch)
+}
+
+#[inline(always)]
+fn is_korean(ch: char) -> bool {
+    MIN_BLOCK_VALUE <= (ch as u32) && (ch as u32) <= MAX_BLOCK_VALUE
+}
+
+#[inline(always)]
+fn is_whitespace(ch: char) -> bool {
+    ch.is_whitespace()
+}
+
+#[inline(always)]
+fn is_common(ch: char) -> bool {
+    is_whitespace(ch) || is_punctuation(ch) || is_korean(ch)
+}
+
+fn print_error(error: DeromanizeError, text: &str) {
+    use dero::DeromanizeError::*;
+    let position = match error {
+        InvalidConsonant { letter, position } => {
+            println!("Expected a valid consonant at position {}, found {}:",
+                position + 1, letter);
+            position
+        },
+        InvalidVowel { letter, position } => {
+            println!("Expected a valid vowel at position {}, found {}:",
+                position + 1, letter);
+            position
+        },
+        InvalidLetter { letter, position } => {
+            println!("Expected a valid consonant or vowel at position \
+                {}, found {}:",
+                position + 1, letter);
+            position
+        },
+        MissingFinalVowel { position } => {
+            println!("Expected a vowel at position {}", position + 1);
+            position
+        }
+    };
+    //let mut example: String = text.chars().take(position+1).collect();
+    //println!("{}", example);
+    println!("{}", text);
+    let mut pointer = String::new();
+    for i in 0..position {
+        pointer.push('~');
+    }
+    pointer.push('^');
+    println!("{}", pointer);
 }
 
 fn deromanize_single(text: &str) -> bool {
-    use dero::DeromanizeError::*;
-    match deromanize(text, allow_punctuation) {
+    match deromanize(text, is_common) {
         Ok(output) => {
             copy_to_clipboard(&output);
             true
         },
         Err(error) => {
-            let position = match error {
-                InvalidConsonant { letter, position } => {
-                    println!("Expected a valid consonant at position {}, found {}:",
-                        position + 1, letter);
-                    position
-                },
-                InvalidVowel { letter, position } => {
-                    println!("Expected a valid vowel at position {}, found {}:",
-                        position + 1, letter);
-                    position
-                },
-                InvalidLetter { letter, position } => {
-                    println!("Expected a valid consonant or vowel at position \
-                        {}, found {}:",
-                        position + 1, letter);
-                    position
-                },
-                MissingFinalVowel { position } => {
-                    println!("Expected a vowel at position {}", position + 1);
-                    position
-                }
-            };
-            //let mut example: String = text.chars().take(position+1).collect();
-            //println!("{}", example);
-            println!("{}", text);
-            let mut pointer = String::new();
-            for i in 0..position {
-                pointer.push('~');
-            }
-            pointer.push('^');
-            println!("{}", pointer);
+            print_error(error, text);
             false
         }
     }
@@ -88,11 +112,22 @@ fn deromanize_single(text: &str) -> bool {
 fn start_interactive(copy: bool) {
     println!("Welcome to the deromanization tool.");
     println!("Write romaja to convert it to hangeul.");
+    println!("(Press Ctrl + C to quit)");
     let mut input = String::new();
     loop {
-        print!("$ ");
+        input.clear();
+        print!("> ");
+        io::stdout().flush().expect("Could not flush stdout");
         io::stdin().read_line(&mut input).unwrap();
-        deromanize_single(&input);
+        match deromanize(&input, is_common) {
+            Ok(output) => {
+                copy_to_clipboard(&output);
+                print!("=> {}", output);
+            },
+            Err(error) => {
+                print_error(error, &input);
+            }
+        }
     }
 }
 
