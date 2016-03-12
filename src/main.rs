@@ -96,10 +96,27 @@ fn print_error(error: DeromanizeError, text: &str) {
     println!("{}", pointer);
 }
 
+fn deromanize_and_look_up(text: &str) -> bool {
+    match deromanize(text, is_common) {
+        Ok(output) => {
+            println!("{}", &output);
+            let url = format!("dict://{}", &output);
+            let status = Command::new("open").arg(&url).status()
+                .expect("Could not open dictionary app");
+            status.success()
+        },
+        Err(error) => {
+            print_error(error, text);
+            false
+        }
+    }
+}
+
 fn deromanize_single(text: &str) -> bool {
     match deromanize(text, is_common) {
         Ok(output) => {
             copy_to_clipboard(&output);
+            println!("{}", &output);
             true
         },
         Err(error) => {
@@ -111,8 +128,8 @@ fn deromanize_single(text: &str) -> bool {
 
 fn start_interactive(copy: bool) {
     println!("Welcome to the deromanization tool.");
-    println!("Write romaja to convert it to hangeul.");
-    println!("(Press Ctrl + C to quit)");
+    println!("Write romaja to convert it to 한글.");
+    println!("( Press Ctrl + C to quit )");
     let mut input = String::new();
     loop {
         input.clear();
@@ -143,6 +160,10 @@ fn main() {
 
     let a_text = Arg::named_and_short("text", 't').single()
         .add_help("A single text string to deromanize.");
+    let a_lookup = Arg::named_and_short("look-up", 'l').one_or_more()
+        .add_help("One or more text strings to deromanize and look up with the \
+        OSX dictionary. The strings are joined with a space before being looked \
+        up");
     let a_pipe_mode = Arg::named("pipe-mode").interrupt()
         .add_help("Start the program in pipe mode, where it reads from stdin \
         and prints the output to stdout.");
@@ -152,7 +173,7 @@ fn main() {
         .add_help("Show this help message.");
 
     let mut parser = Parser::new();
-    parser.define(&[a_text, a_pipe_mode, a_version, a_help]).unwrap();
+    parser.define(&[a_text, a_lookup, a_pipe_mode, a_version, a_help]).unwrap();
 
     let mut parse = parser.parse(&args);
     for item in parse {
@@ -164,6 +185,21 @@ fn main() {
             },
             Ok(Single { name: "text", parameter }) => {
                 if deromanize_single(parameter) {
+                    return;
+                } else {
+                    process::exit(1);
+                }
+            },
+            Ok(Multiple { name: "look-up", parameters }) => {
+                let mut text = String::new();
+                let last = parameters.len() - 1;
+                for i in 0..parameters.len() {
+                    text.push_str(parameters[i]);
+                    if i != last {
+                        text.push(' ');
+                    }
+                }
+                if deromanize_and_look_up(&text) {
                     return;
                 } else {
                     process::exit(1);
