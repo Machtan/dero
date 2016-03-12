@@ -62,16 +62,19 @@ fn push_block(text: &mut String, initial: u32, vowel: u32, first_final: Option<u
     let mut value = BLOCK_START;
     value += initial * ITEMS_PER_INITIAL;
     value += vowel * FINAL_COUNT;
-    let mut _final = 0;
+    let mut mapped_final = 0;
+    println!("Finals: {:?} {:?}", first_final, last_final);
     if let Some(ff) = first_final {
-        _final += *FINAL_MAP.get(&ff).unwrap();
+        mapped_final += *FINAL_MAP.get(&ff).expect("Invalid first final");
         if let Some(lf) = last_final {
-            _final += *FINAL_COMBINATION_MAP.get(&ff).unwrap().get(&lf).unwrap();
+            mapped_final += *FINAL_COMBINATION_MAP.get(&mapped_final)
+                .expect("Invalid first final after mapping")
+                .get(&lf).expect("Invalid last final");
         }
     }
-    value += _final;
+    value += mapped_final;
     //println!("Value: {}, Char: {}", value, char::from_u32(value).unwrap());
-    text.push(char::from_u32(value).unwrap());
+    text.push(char::from_u32(value).expect("Invalid UTF-8 value created from block"));
 }
 
 fn deromanize_part(part: &str, start_index: usize) -> Result<String, DeromanizeError> {
