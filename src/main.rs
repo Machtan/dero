@@ -1,6 +1,5 @@
 #![feature(plugin)]
 #![plugin(phf_macros)]
-#![allow(unused)]
 
 extern crate phf;
 extern crate argonaut;
@@ -9,10 +8,10 @@ mod maps;
 mod dero;
 
 use std::io::{self, Write};
+use std::borrow::Borrow;
 use std::env;
 use std::process::{self, Command, Stdio};
-use std::collections::{HashMap};
-use argonaut::{Parser, Arg, StructuredArgument, generate_help};
+use argonaut::{Parse, ArgDef};
 use dero::{deromanize, DeromanizeError};
 
 const MIN_BLOCK_VALUE: u32 = 44032;
@@ -89,7 +88,7 @@ fn print_error(error: DeromanizeError, text: &str) {
     //println!("{}", example);
     println!("{}", text);
     let mut pointer = String::new();
-    for i in 0..position {
+    for _ in 0..position {
         pointer.push('~');
     }
     pointer.push('^');
@@ -126,7 +125,7 @@ fn deromanize_single(text: &str) -> bool {
     }
 }
 
-fn start_interactive(copy: bool) {
+fn start_interactive(_copy: bool) {
     println!("Welcome to the deromanization tool.");
     println!("Write romaja to convert it to 한글.");
     println!("( Press Ctrl + C to quit )");
@@ -149,69 +148,50 @@ fn start_interactive(copy: bool) {
 }
 
 fn main() {
-    use argonaut::StructuredArgument::*;
+    use argonaut::Arg::*;
     const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
+    
+    const HELP: &'static str = "\
+Optional arguments:
+--text | -t     A single text string to deromanize.
+--look-up | -l  A text string to deromanize and look up with the OSX dictionary.
+--version       Show the version of this tool.
+--help | -h     Show this help message.\
+    ";
 
-    let arg_vec: Vec<_> = env::args().skip(1).collect();
-    let mut args: Vec<&str> = Vec::new();
-    for arg in arg_vec.iter() {
-        args.push(arg);
-    }
-
-    let a_text = Arg::named_and_short("text", 't').single()
-        .add_help("A single text string to deromanize.");
-    let a_lookup = Arg::named_and_short("look-up", 'l').one_or_more()
-        .add_help("One or more text strings to deromanize and look up with the \
-        OSX dictionary. The strings are joined with a space before being looked \
-        up");
-    let a_pipe_mode = Arg::named("pipe-mode").interrupt()
-        .add_help("Start the program in pipe mode, where it reads from stdin \
-        and prints the output to stdout.");
-    let a_version = Arg::named("version").interrupt()
-        .add_help("Show the version of this tool.");
-    let a_help = Arg::named_and_short("help", 'h').interrupt()
-        .add_help("Show this help message.");
-
-    let mut parser = Parser::new();
-    parser.define(&[a_text, a_lookup, a_pipe_mode, a_version, a_help]).unwrap();
-
-    let mut parse = parser.parse(&args);
-    for item in parse {
+    let a_text = ArgDef::named_and_short("text", 't').option();
+    let a_lookup = ArgDef::named_and_short("look-up", 'l').option();
+    let a_version = ArgDef::named("version").switch();
+    let a_help = ArgDef::named_and_short("help", 'h').switch();
+    let expected = &[a_text, a_lookup, a_version, a_help];
+    
+    let args: Vec<_> = env::args().skip(1).collect();
+    let mut parse = Parse::new(expected, &args).expect("Invalid definitions");
+    while let Some(item) = parse.next() {
         match item {
             Err(err) => {
                 println!("Parse error: {:?}", err);
                 println!("{}", USAGE);
                 return;
             },
-            Ok(Single { name: "text", parameter }) => {
-                if deromanize_single(parameter) {
+            Ok(Option ("text", value)) => {
+                if deromanize_single(value.borrow()) {
                     return;
                 } else {
                     process::exit(1);
                 }
             },
-            Ok(Multiple { name: "look-up", parameters }) => {
-                let mut text = String::new();
-                let last = parameters.len() - 1;
-                for i in 0..parameters.len() {
-                    text.push_str(parameters[i]);
-                    if i != last {
-                        text.push(' ');
-                    }
-                }
-                if deromanize_and_look_up(&text) {
+            Ok(Option("look-up", value)) => {
+                if deromanize_and_look_up(value.borrow()) {
                     return;
                 } else {
                     process::exit(1);
                 }
             },
-            Ok(Interrupt { name: "pipe-mode" }) => {
-                return println!("Reading stuff from stdin...");
+            Ok(Switch("help")) => {
+                return println!("{}\n\n{}", USAGE, HELP);
             },
-            Ok(Interrupt { name: "help" }) => {
-                return println!("{}\n\n{}", USAGE, generate_help(&parser));
-            },
-            Ok(Interrupt { name: "version" }) => {
+            Ok(Switch("version")) => {
                 return println!("{}", env!("CARGO_PKG_VERSION"));
             },
             _ => unreachable!(),

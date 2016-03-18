@@ -4,11 +4,8 @@ use maps::{CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP};
 
 
 const BLOCK_START: u32          = 44032;
-const CONSONANT_COUNT: u32      = 30;
-const VOWEL_COUNT: u32          = 21;
 const FINAL_COUNT: u32          = 28;
 const ITEMS_PER_INITIAL: u32    = 588;
-const VOWEL_OFFSET: u32         = 28;
 const CONSONANT_IEUNG: u32      = 11;
 
 #[derive(Debug)]
@@ -109,7 +106,6 @@ fn deromanize_part(part: &str, start_index: usize) -> Result<String, DeromanizeE
 pub fn deromanize<F>(text: &str, allow_char: F)
         -> Result<String, DeromanizeError>
         where F: Fn(char) -> bool {
-    use self::DeromanizeError::*;
     let mut output = String::new();
     let mut start = 0;
     let mut start_char_index = 0;
@@ -138,8 +134,17 @@ pub fn deromanize<F>(text: &str, allow_char: F)
     Ok(output)
 }
 
+enum DeroState {
+    ReadInitial,
+    ReadVowel,
+    ReadFirstFinal,
+    ReadSecondFinal,
+    ReadInitialOrVowel,
+}
+
 pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
     use self::DeromanizeError::*;
+    use self::DeroState::*;
     let mut output = String::new();
 
     let mut initial: u32 = 0;
@@ -147,44 +152,44 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
     let mut first_final: u32 = 0;
     let mut last_final: u32 = 0;
 
-    let mut pos = 0;
+    let mut state = ReadInitial;
     let indices: Vec<_> = text.char_indices().map(|(i, _)| i).collect();
     let mut i = 0;
     while i < indices.len() {
         //println!("{}: ({}: {})", i, pos, text.chars().nth(i).unwrap());
-        match pos {
-            0 => { // Read initial
+        match state {
+            ReadInitial => { // Read initial
                 // Allow vowels with no consonant in the beginning of a block sequence
                 if i == 0 {
                     if let Ok((index, len)) = read_vowel(text, i, &indices) {
                         initial = CONSONANT_IEUNG;
                         vowel = index;
-                        pos = 2;
+                        state = ReadFirstFinal;
                         i += len;
                         continue;
                     }
                 }
                 let (index, len) = try!(read_consonant(text, i, &indices));
                 initial = index;
-                pos += 1;
+                state = ReadVowel;
                 i += len;
             },
-            1 => { // Read Vowel
+            ReadVowel => { // Read Vowel
                 let (index, len) = try!(read_vowel(text, i, &indices));
                 vowel = index;
-                pos += 1;
+                state = ReadFirstFinal;
                 i += len;
             },
-            2 => { // Read consonant (or the beginning of next block)
+            ReadFirstFinal => { // Read consonant (or the beginning of next block)
                 // Read a consonant
                 if let Ok((index, len)) = read_consonant(text, i, &indices) {
                     if FINAL_MAP.get(&index).is_some() { // If it cannot be a final, goto 1
                         first_final = index;
-                        pos += 1;
+                        state = ReadSecondFinal;
                     } else {
                         push_block(&mut output, initial, vowel, None, None);
                         initial = index;
-                        pos = 1;
+                        state = ReadVowel;
                     }
                     i += len;
                 // Allow two vowels in a row and just prefix ieung ('ㅇ')
@@ -192,13 +197,13 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
                     push_block(&mut output, initial, vowel, None, None);
                     initial = CONSONANT_IEUNG;
                     vowel = index;
-                    pos = 2;
+                    state = ReadFirstFinal;
                     i += len;
                 } else {
                     return Err(InvalidLetter { letter: text.chars().nth(i).unwrap(), position: i });
                 }
             },
-            3 => { // If this is a vowel: goto 2 | otherwise final consonant or next block
+            ReadSecondFinal => { // If this is a vowel: goto 2 | otherwise final consonant or next block
                 if let Ok((index, len)) = read_consonant(text, i, &indices) {
                     let mapped = *FINAL_MAP.get(&first_final).unwrap();
                     // Can anything follow the other final?
@@ -206,16 +211,16 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
                         // Can this consonant follow the other final?
                         if map.get(&index).is_some() {
                             last_final = index;
-                            pos += 1;
+                            state = ReadInitialOrVowel;
                         } else { // goto 1
                             push_block(&mut output, initial, vowel, Some(first_final), None);
                             initial = index;
-                            pos = 1;
+                            state = ReadVowel;
                         }
                     } else { // goto 1
                         push_block(&mut output, initial, vowel, Some(first_final), None);
                         initial = index;
-                        pos = 1;
+                        state = ReadVowel;
                     }
                     i += len;
 
@@ -224,42 +229,41 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
                     initial = first_final;
                     vowel = index;
                     i += len;
-                    pos = 2;
+                    state = ReadFirstFinal;
                 } else {
                     return Err(InvalidLetter { letter: text.chars().nth(i).unwrap(), position: i });
                 }
             },
-            4 => { // full block. If this is a consonant: goto 1, if vowel: goto 2
+            ReadInitialOrVowel => { // full block. If this is a consonant: goto 1, if vowel: goto 2
                 if let Ok((index, len)) = read_consonant(text, i, &indices) {
                     push_block(&mut output, initial, vowel, Some(first_final), Some(last_final));
                     initial = index;
                     i += len;
-                    pos = 1;
+                    state = ReadVowel;
                 } else if let Ok((index, len)) = read_vowel(text, i, &indices) {
                     push_block(&mut output, initial, vowel, Some(first_final), None);
                     initial = last_final;
                     vowel = index;
                     i += len;
-                    pos = 2;
+                    state = ReadFirstFinal;
                 } else {
                     return Err(InvalidLetter { letter: text.chars().nth(i).unwrap(), position: i });
                 }
             }
-            _ => unreachable!(),
         }
     }
 
-    match pos {
-        1 => {
+    match state {
+        ReadVowel => {
             return Err(MissingFinalVowel { position: indices.len() });
         },
-        2 => {
+        ReadFirstFinal => {
             push_block(&mut output, initial, vowel, None, None);
         },
-        3 => {
+        ReadSecondFinal => {
             push_block(&mut output, initial, vowel, Some(first_final), None);
         },
-        4 => {
+        ReadInitialOrVowel => {
             push_block(&mut output, initial, vowel, Some(first_final), Some(last_final));
         },
         _ => {}

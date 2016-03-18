@@ -4,6 +4,6 @@ name = "dero"
 version = "0.1.0"
 
 [dependencies]
-argonaut = "0.9.0"
+argonaut = "0.11.0"
 phf = "0.7.12"
 phf_macros = "0.7.12"
