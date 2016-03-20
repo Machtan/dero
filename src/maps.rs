@@ -54,7 +54,7 @@ pub const FINAL_MAP: phf::Map<u32, u32> = phf_map! {
     17u32 => 26, // ㅍ
     18u32 => 27, // ㅎ
 };
-//FINALS = " ㄱ ㄲ ㄱㅅ ㄴ ㄴㅈ ㄴㅎ ㄷ ㄹ ㄹㄱ ㄹㅁ ㄹㅂ ㄹㅅ ㄹㅌ ㄹㅍ ㄹㅎ ㅁ ㅂ ㅂㅅ ㅅ ㅆ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ".split(" ")
+// FINALS = " ㄱ ㄲ ㄱㅅ ㄴ ㄴㅈ ㄴㅎ ㄷ ㄹ ㄹㄱ ㄹㅁ ㄹㅂ ㄹㅅ ㄹㅌ ㄹㅍ ㄹㅎ ㅁ ㅂ ㅂㅅ ㅅ ㅆ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ".split(" ")
 
 // maps from a MAPPED first final consonant
 // to valid INITIAL consonants that may follow it

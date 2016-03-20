@@ -19,13 +19,16 @@ const MAX_BLOCK_VALUE: u32 = 55203;
 
 fn copy_to_clipboard(text: &str) {
     if cfg!(target_os = "macos") {
-        //println!("Copying '{}' to the clipboard...", text);
-        let mut child = Command::new("pbcopy").arg(text).stdin(Stdio::piped()).spawn()
-            .expect("Could not run pbcopy");
+        // println!("Copying '{}' to the clipboard...", text);
+        let mut child = Command::new("pbcopy")
+                            .arg(text)
+                            .stdin(Stdio::piped())
+                            .spawn()
+                            .expect("Could not run pbcopy");
         if let Some(ref mut stdin) = child.stdin {
             stdin.write_all(text.as_bytes())
-                .expect("Could not write to pbcopy");
-        } else { 
+                 .expect("Could not write to pbcopy");
+        } else {
             unreachable!();
         }
         child.wait().expect("Error while running pbcopy");
@@ -35,7 +38,7 @@ fn copy_to_clipboard(text: &str) {
 }
 
 static PUNCTUATION: phf::Set<char> = phf_set! {
-    '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+', 
+    '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+',
     '(', ')', '[', ']', '{', '}',
     '@', '*', '&', ':', ';', '_', '^', '`', '~', '$', '|'
 };
@@ -65,27 +68,29 @@ fn print_error(error: DeromanizeError, text: &str) {
     let position = match error {
         InvalidConsonant { letter, position } => {
             println!("Expected a valid consonant at position {}, found {}:",
-                position + 1, letter);
+                     position + 1,
+                     letter);
             position
-        },
+        }
         InvalidVowel { letter, position } => {
             println!("Expected a valid vowel at position {}, found {}:",
-                position + 1, letter);
+                     position + 1,
+                     letter);
             position
-        },
+        }
         InvalidLetter { letter, position } => {
-            println!("Expected a valid consonant or vowel at position \
-                {}, found {}:",
-                position + 1, letter);
+            println!("Expected a valid consonant or vowel at position {}, found {}:",
+                     position + 1,
+                     letter);
             position
-        },
+        }
         MissingFinalVowel { position } => {
             println!("Expected a vowel at position {}", position + 1);
             position
         }
     };
-    //let mut example: String = text.chars().take(position+1).collect();
-    //println!("{}", example);
+    // let mut example: String = text.chars().take(position+1).collect();
+    // println!("{}", example);
     println!("{}", text);
     let mut pointer = String::new();
     for _ in 0..position {
@@ -100,10 +105,12 @@ fn deromanize_and_look_up(text: &str) -> bool {
         Ok(output) => {
             println!("{}", &output);
             let url = format!("dict://{}", &output);
-            let status = Command::new("open").arg(&url).status()
-                .expect("Could not open dictionary app");
+            let status = Command::new("open")
+                             .arg(&url)
+                             .status()
+                             .expect("Could not open dictionary app");
             status.success()
-        },
+        }
         Err(error) => {
             print_error(error, text);
             false
@@ -117,7 +124,7 @@ fn deromanize_single(text: &str) -> bool {
             copy_to_clipboard(&output);
             println!("{}", &output);
             true
-        },
+        }
         Err(error) => {
             print_error(error, text);
             false
@@ -139,7 +146,7 @@ fn start_interactive(_copy: bool) {
             Ok(output) => {
                 copy_to_clipboard(&output);
                 print!("=> {}", output);
-            },
+            }
             Err(error) => {
                 print_error(error, &input);
             }
@@ -150,21 +157,22 @@ fn start_interactive(_copy: bool) {
 fn main() {
     use argonaut::Arg::*;
     const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
-    
-    const HELP: &'static str = "\
-Optional arguments:
---text | -t     A single text string to deromanize.
---look-up | -l  A text string to deromanize and look up with the OSX dictionary.
---version       Show the version of this tool.
---help | -h     Show this help message.\
-    ";
+
+    const HELP: &'static str = "Optional arguments:
+--text | -t     A single text string to \
+                                deromanize.
+--look-up | -l  A text string to deromanize and look \
+                                up with the OSX dictionary.
+--version       Show the version of \
+                                this tool.
+--help | -h     Show this help message.";
 
     let a_text = ArgDef::named_and_short("text", 't').option();
     let a_lookup = ArgDef::named_and_short("look-up", 'l').option();
     let a_version = ArgDef::named("version").switch();
     let a_help = ArgDef::named_and_short("help", 'h').switch();
     let expected = &[a_text, a_lookup, a_version, a_help];
-    
+
     let args: Vec<_> = env::args().skip(1).collect();
     let mut parse = Parse::new(expected, &args).expect("Invalid definitions");
     while let Some(item) = parse.next() {
@@ -173,27 +181,27 @@ Optional arguments:
                 println!("Parse error: {:?}", err);
                 println!("{}", USAGE);
                 return;
-            },
-            Ok(Option ("text", value)) => {
+            }
+            Ok(Option("text", value)) => {
                 if deromanize_single(value.borrow()) {
                     return;
                 } else {
                     process::exit(1);
                 }
-            },
+            }
             Ok(Option("look-up", value)) => {
                 if deromanize_and_look_up(value.borrow()) {
                     return;
                 } else {
                     process::exit(1);
                 }
-            },
+            }
             Ok(Switch("help")) => {
                 return println!("{}\n\n{}", USAGE, HELP);
-            },
+            }
             Ok(Switch("version")) => {
                 return println!("{}", env!("CARGO_PKG_VERSION"));
-            },
+            }
             _ => unreachable!(),
         }
     }
