@@ -1,11 +1,9 @@
 #![feature(plugin)]
 #![plugin(phf_macros)]
 
-extern crate phf;
 extern crate argonaut;
-
-mod maps;
-mod dero;
+extern crate dero;
+extern crate phf;
 
 use std::env;
 use std::fmt;
@@ -84,13 +82,8 @@ fn is_korean(ch: char) -> bool {
 }
 
 #[inline]
-fn is_whitespace(ch: char) -> bool {
-    ch.is_whitespace()
-}
-
-#[inline]
-fn is_common(ch: char) -> bool {
-    is_whitespace(ch) || is_punctuation(ch) || is_korean(ch)
+fn is_boundary(ch: char) -> bool {
+    ch.is_whitespace() || is_punctuation(ch) || is_korean(ch)
 }
 
 fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
@@ -105,7 +98,7 @@ fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
 }
 
 fn deromanize_and_look_up(text: &str) -> bool {
-    match dero::deromanize(text, is_common) {
+    match dero::deromanize_words(text, is_boundary) {
         Ok(output) => {
             println!("{}", &output);
             let url = format!("dict://{}", &output);
@@ -123,7 +116,7 @@ fn deromanize_and_look_up(text: &str) -> bool {
 }
 
 fn deromanize_single(text: &str) -> bool {
-    match dero::deromanize(text, is_common) {
+    match dero::deromanize_words(text, is_boundary) {
         Ok(output) => {
             copy_to_clipboard(output.trim_right());
             println!("{}", &output);
@@ -145,12 +138,12 @@ fn start_interactive(copy: bool) {
         input.clear();
         print!("> ");
         io::stdout().flush().expect("Could not flush stdout");
-        if io::stdin().read_line(&mut input).unwrap() == 0 {
+        if io::stdin().read_line(&mut input).expect("Could not read from stdin") == 0 {
             // End of file reached.
             println!("");
             return;
         }
-        match dero::deromanize(&input, is_common) {
+        match dero::deromanize_words(&input, is_boundary) {
             Ok(output) => {
                 let trimmed = output.trim_right();
                 if copy {
@@ -186,12 +179,12 @@ fn main() {
     let expected = &[a_text, a_lookup, a_version, a_help, a_no_copy];
 
     let args: Vec<_> = env::args().skip(1).collect();
-    let mut parse = Parse::new(expected, &args).expect("Invalid definitions");
+    let parse = Parse::new(expected, &args).expect("Invalid definitions");
 
     let mut modes = Vec::new();
     let mut interactive_copy = true;
 
-    for item in &mut parse {
+    for item in parse {
         match item {
             Err(err) => {
                 // TODO: Do not use Debug print of the error.

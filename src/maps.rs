@@ -102,7 +102,9 @@ pub const VOWELS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
 pub const CONSONANTS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
     'g' => Leaf(Some(0)), // ㄱ
     'G' => Leaf(Some(1)), // ㄲ
-    'n' => Leaf(Some(2)), // ㄴ
+    'n' => Node(Some(2), phf_map! { // ㄴ
+        'g' => Leaf(Some(11)), // ㅇ
+    }),
     'd' => Leaf(Some(3)), // ㄷ
     'D' => Leaf(Some(4)), // ㄸ
     'r' => Leaf(Some(5)), // ㄹ
