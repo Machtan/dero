@@ -8,72 +8,35 @@ const ITEMS_PER_INITIAL: u32 = 588;
 const CONSONANT_IEUNG: u32 = 11;
 
 #[derive(Debug, Copy, Clone)]
-pub enum DeromanizeError {
-    InvalidConsonant {
-        letter: char,
-        position: usize,
-    },
-    InvalidVowel {
-        letter: char,
-        position: usize,
-    },
-    InvalidLetter {
-        letter: char,
-        position: usize,
-    },
-    MissingFinalVowel {
-        position: usize,
-    },
+pub struct Error {
+    pub position: usize,
+    pub kind: ErrorKind,
 }
 
-impl DeromanizeError {
-    pub fn position(self) -> usize {
-        use self::DeromanizeError::*;
-
-        match self {
-            InvalidConsonant { position, .. } => position,
-            InvalidVowel { position, .. } => position,
-            InvalidLetter { position, .. } => position,
-            MissingFinalVowel { position } => position,
-        }
-    }
-
-    pub fn offset(self, offset: usize) -> DeromanizeError {
-        use self::DeromanizeError::*;
-
-        match self {
-            InvalidConsonant { position, letter } => {
-                InvalidConsonant {
-                    position: position + offset,
-                    letter: letter,
-                }
-            }
-            InvalidVowel { position, letter } => {
-                InvalidVowel {
-                    position: position + offset,
-                    letter: letter,
-                }
-            }
-            InvalidLetter { position, letter } => {
-                InvalidLetter {
-                    position: position + offset,
-                    letter: letter,
-                }
-            }
-            MissingFinalVowel { position } => MissingFinalVowel { position: position + offset },
+impl Error {
+    pub fn offset(self, offset: isize) -> Error {
+        Error {
+            position: ((self.position as isize) + offset) as usize,
+            kind: self.kind,
         }
     }
 }
 
-fn read_consonant<I>(it: &mut Peekable<I>) -> Result<u32, DeromanizeError>
+#[derive(Debug, Copy, Clone)]
+pub enum ErrorKind {
+    InvalidConsonant(char),
+    InvalidVowel(char),
+    InvalidLetter(char),
+    MissingFinalVowel,
+}
+
+fn read_consonant<I>(it: &mut Peekable<I>) -> Result<u32, Error>
     where I: Iterator<Item = (usize, char)>
 {
-    use self::DeromanizeError::*;
-
-    let (i, ch) = it.next().expect("read_consonant with empty input");
-    let err = InvalidConsonant {
-        letter: ch,
+    let (i, ch) = *it.peek().expect("read_consonant with empty input");
+    let err = Error {
         position: i,
+        kind: ErrorKind::InvalidConsonant(ch),
     };
 
     let mut map = &CONSONANTS;
@@ -99,13 +62,13 @@ fn read_consonant<I>(it: &mut Peekable<I>) -> Result<u32, DeromanizeError>
     res.ok_or(err)
 }
 
-fn read_vowel<I>(it: &mut Peekable<I>) -> Result<u32, DeromanizeError>
+fn read_vowel<I>(it: &mut Peekable<I>) -> Result<u32, Error>
     where I: Iterator<Item = (usize, char)>
 {
     let (i, ch) = *it.peek().expect("read_vowel with empty input");
-    let err = DeromanizeError::InvalidVowel {
-        letter: ch,
+    let err = Error {
         position: i,
+        kind: ErrorKind::InvalidVowel(ch),
     };
 
     let mut map = &VOWELS;
@@ -154,7 +117,7 @@ fn push_block(text: &mut String,
     text.push(char::from_u32(value).expect("Invalid UTF-8 value created from block"));
 }
 
-pub fn deromanize<F>(text: &str, is_break_char: F) -> Result<String, DeromanizeError>
+pub fn deromanize<F>(text: &str, is_break_char: F) -> Result<String, Error>
     where F: Fn(char) -> bool
 {
     let mut output = String::new();
@@ -165,7 +128,7 @@ pub fn deromanize<F>(text: &str, is_break_char: F) -> Result<String, DeromanizeE
         if is_break_char(ch) {
             if let Some(start) = start {
                 let part = &text[start..i];
-                let res = try!(deromanize_validated(part).map_err(|e| e.offset(start)));
+                let res = try!(deromanize_validated(part).map_err(|e| e.offset(start as isize)));
                 output.push_str(&res);
             }
             output.push(ch);
@@ -176,7 +139,7 @@ pub fn deromanize<F>(text: &str, is_break_char: F) -> Result<String, DeromanizeE
     }
     if let Some(start) = start {
         let part = &text[start..];
-        let res = try!(deromanize_validated(part).map_err(|e| e.offset(start)));
+        let res = try!(deromanize_validated(part).map_err(|e| e.offset(start as isize)));
         output.push_str(&res);
     }
 
@@ -207,13 +170,12 @@ enum DeroState {
     },
 }
 
-pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
-    use self::DeromanizeError::*;
+pub fn deromanize_validated(text: &str) -> Result<String, Error> {
+    use self::ErrorKind::*;
     use self::DeroState::*;
+
     let mut output = String::new();
-
     let mut state = Initial;
-
     let mut it = text.char_indices().peekable();
 
     while it.peek().is_some() {
@@ -239,9 +201,9 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
                 let code = match read_vowel(&mut it) {
                     Ok(code) => code,
                     Err(_) => {
-                        return Err(InvalidLetter {
+                        return Err(Error {
                             position: i,
-                            letter: ch,
+                            kind: InvalidLetter(ch),
                         });
                     }
                 };
@@ -332,7 +294,10 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
 
     match state {
         AfterInitial { .. } => {
-            return Err(MissingFinalVowel { position: text.len() });
+            return Err(Error {
+                position: text.len(),
+                kind: MissingFinalVowel,
+            });
         }
         AfterVowel { initial, vowel } => {
             push_block(&mut output, initial, vowel, None, None);

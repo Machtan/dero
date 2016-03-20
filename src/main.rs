@@ -14,36 +14,32 @@ use std::process::{self, Command, Stdio};
 
 use argonaut::{Parse, ArgDef};
 
-use dero::{DeromanizeError, deromanize};
+struct FmtDeroError(dero::Error);
 
-struct FmtDeromanizeError<'a>(&'a DeromanizeError);
-
-impl<'a> fmt::Display for FmtDeromanizeError<'a> {
+impl fmt::Display for FmtDeroError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use dero::DeromanizeError::*;
+        use dero::ErrorKind::*;
 
-        match *self.0 {
-            InvalidConsonant { letter, position } => {
+        match self.0.kind {
+            InvalidConsonant(letter) => {
                 write!(f,
                        "Expected a valid consonant at position {}, found {:?}",
-                       position + 1,
+                       self.0.position + 1,
                        letter)
             }
-            InvalidVowel { letter, position } => {
+            InvalidVowel(letter) => {
                 write!(f,
                        "Expected a valid vowel at position {}, found {:?}",
-                       position + 1,
+                       self.0.position + 1,
                        letter)
             }
-            InvalidLetter { letter, position } => {
+            InvalidLetter(letter) => {
                 write!(f,
                        "Expected a valid consonant or vowel at position {}, found {:?}",
-                       position + 1,
+                       self.0.position + 1,
                        letter)
             }
-            MissingFinalVowel { position } => {
-                write!(f, "Expected a vowel at position {}", position + 1)
-            }
+            MissingFinalVowel => write!(f, "Expected a vowel at position {}", self.0.position + 1),
         }
     }
 }
@@ -97,11 +93,11 @@ fn is_common(ch: char) -> bool {
     is_whitespace(ch) || is_punctuation(ch) || is_korean(ch)
 }
 
-fn print_error(error: DeromanizeError, text: &str) -> io::Result<()> {
-    let num_chars = text[..error.position()].chars().count() + 1;
+fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
+    let num_chars = text[..error.position].chars().count() + 1;
     // Output right-aligned '^' padded with '~' to the length given by argument 3.
     let msg = format!("{}\n{}\n{:~>3$}\n",
-                      FmtDeromanizeError(&error),
+                      FmtDeroError(error),
                       text.trim_right(),
                       '^',
                       num_chars);
@@ -109,7 +105,7 @@ fn print_error(error: DeromanizeError, text: &str) -> io::Result<()> {
 }
 
 fn deromanize_and_look_up(text: &str) -> bool {
-    match deromanize(text, is_common) {
+    match dero::deromanize(text, is_common) {
         Ok(output) => {
             println!("{}", &output);
             let url = format!("dict://{}", &output);
@@ -127,7 +123,7 @@ fn deromanize_and_look_up(text: &str) -> bool {
 }
 
 fn deromanize_single(text: &str) -> bool {
-    match deromanize(text, is_common) {
+    match dero::deromanize(text, is_common) {
         Ok(output) => {
             copy_to_clipboard(output.trim_right());
             println!("{}", &output);
@@ -154,7 +150,7 @@ fn start_interactive(copy: bool) {
             println!("");
             return;
         }
-        match deromanize(&input, is_common) {
+        match dero::deromanize(&input, is_common) {
             Ok(output) => {
                 let trimmed = output.trim_right();
                 if copy {
