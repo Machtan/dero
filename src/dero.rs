@@ -1,7 +1,6 @@
-
 use std::char;
+use std::fmt;
 use maps::{CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP};
-
 
 const BLOCK_START: u32 = 44032;
 const FINAL_COUNT: u32 = 28;
@@ -27,12 +26,55 @@ pub enum DeromanizeError {
     },
 }
 
+impl fmt::Display for DeromanizeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::DeromanizeError::*;
+
+        match *self {
+            InvalidConsonant { letter, position } => {
+                write!(f,
+                       "Expected a valid consonant at position {}, found {:?}",
+                       position + 1,
+                       letter)
+            }
+            InvalidVowel { letter, position } => {
+                write!(f,
+                       "Expected a valid vowel at position {}, found {:?}",
+                       position + 1,
+                       letter)
+            }
+            InvalidLetter { letter, position } => {
+                write!(f,
+                       "Expected a valid consonant or vowel at position {}, found {:?}",
+                       position + 1,
+                       letter)
+            }
+            MissingFinalVowel { position } => {
+                write!(f, "Expected a vowel at position {}", position + 1)
+            }
+        }
+    }
+}
+
+impl DeromanizeError {
+    pub fn char_position(&self) -> usize {
+        use self::DeromanizeError::*;
+
+        match *self {
+            InvalidConsonant { position, .. } => position,
+            InvalidVowel { position, .. } => position,
+            InvalidLetter { position, .. } => position,
+            MissingFinalVowel { position } => position,
+        }
+    }
+}
+
 fn read_consonant(text: &str,
                   i: usize,
                   indices: &[usize])
                   -> Result<(u32, usize), DeromanizeError> {
     use self::DeromanizeError::*;
-    for &len in [2, 1].iter() {
+    for &len in &[2, 1] {
         if i + len > indices.len() {
             // Skip if there aren't enough text left
             continue;
@@ -47,15 +89,15 @@ fn read_consonant(text: &str,
             return Ok((*index, len));
         }
     }
-    return Err(InvalidConsonant {
+    Err(InvalidConsonant {
         letter: text.chars().nth(i).unwrap(),
         position: i,
-    });
+    })
 }
 
 fn read_vowel(text: &str, i: usize, indices: &[usize]) -> Result<(u32, usize), DeromanizeError> {
     use self::DeromanizeError::*;
-    for &len in [3, 2, 1].iter() {
+    for &len in &[3, 2, 1] {
         if i + len > indices.len() {
             // Skip if there aren't enough text left
             continue;
@@ -70,10 +112,10 @@ fn read_vowel(text: &str, i: usize, indices: &[usize]) -> Result<(u32, usize), D
             return Ok((*index, len));
         }
     }
-    return Err(InvalidVowel {
+    Err(InvalidVowel {
         letter: text.chars().nth(i).unwrap(),
         position: i,
-    });
+    })
 }
 
 fn push_block(text: &mut String,
