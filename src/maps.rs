@@ -57,3 +57,69 @@ pub const FINAL_COMBINATION_MAP: phf::Map<u32, phf::Map<u32, u32>> = phf_map! {
         9u32 => 1, // ㅂㅅ
     }
 };
+
+pub enum PhfTrie<T: 'static> {
+    Leaf(T),
+    Node(T, phf::Map<char, PhfTrie<T>>),
+}
+
+use self::PhfTrie::*;
+
+pub const VOWELS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
+    'a' => Node(Some(0), phf_map! { // 아
+        'e' => Leaf(Some(1)), // 애
+    }),
+    'e' => Node(Some(5), phf_map! { // 에
+        'o' => Leaf(Some(4)), // 어
+    }),
+    'i' => Leaf(Some(20)), // 이
+    'o' => Node(Some(8), phf_map! { // 오
+        'e' => Leaf(Some(11)), // 외
+    }),
+    'u' => Leaf(Some(13)), // 우
+    'w' => Node(None, phf_map! {
+        'a' => Node(Some(9), phf_map! { // 와
+            'e' => Leaf(Some(10)), // 왜
+        }),
+        'e' => Node(Some(15), phf_map! { // 웨
+            'o' => Leaf(Some(14)), // 워
+        }),
+        'i' => Leaf(Some(16)), // 위
+    }),
+    'y' => Node(Some(18), phf_map! { // ㅡ
+        'a' => Node(Some(2), phf_map! { // 야
+            'e' => Leaf(Some(3)), // 얘
+        }),
+        'e' => Node(Some(7), phf_map! { // 예
+            'o' => Leaf(Some(6)), // 여
+        }),
+        'i' => Leaf(Some(19)), // 의
+        'u' => Leaf(Some(17)), // 유
+        'o' => Leaf(Some(12)), // 요
+    }),
+};
+
+pub const CONSONANTS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
+    'g' => Leaf(Some(0)), // ㄱ
+    'G' => Leaf(Some(1)), // ㄲ
+    'n' => Leaf(Some(2)), // ㄴ
+    'd' => Leaf(Some(3)), // ㄷ
+    'D' => Leaf(Some(4)), // ㄸ
+    'r' => Leaf(Some(5)), // ㄹ
+    'l' => Leaf(Some(5)), // ㄹ
+    'm' => Leaf(Some(6)), // ㅁ
+    'b' => Leaf(Some(7)), // ㅂ
+    'B' => Leaf(Some(8)), // ㅃ
+    's' => Leaf(Some(9)), // ㅅ
+    'S' => Leaf(Some(10)), // ㅆ
+    'x' => Leaf(Some(11)), // ㅇ
+    'j' => Leaf(Some(12)), // ㅈ
+    'J' => Leaf(Some(13)), // ㅉ
+    'c' => Node(None, phf_map! {
+        'h' => Leaf(Some(14)),
+    }),
+    'k' => Leaf(Some(15)), // ㅋ
+    't' => Leaf(Some(16)), // ㅌ
+    'p' => Leaf(Some(17)), // ㅍ
+    'h' => Leaf(Some(18)), // ㅎ
+};

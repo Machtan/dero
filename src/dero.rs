@@ -1,6 +1,6 @@
 use std::char;
 use std::iter::Peekable;
-use maps::{FINAL_MAP, FINAL_COMBINATION_MAP};
+use maps::{PhfTrie, CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP};
 
 const BLOCK_START: u32 = 44032;
 const FINAL_COUNT: u32 = 28;
@@ -65,7 +65,7 @@ impl DeromanizeError {
     }
 }
 
-fn read_consonant<I>(it: &mut I) -> Result<u32, DeromanizeError>
+fn read_consonant<I>(it: &mut Peekable<I>) -> Result<u32, DeromanizeError>
     where I: Iterator<Item = (usize, char)>
 {
     use self::DeromanizeError::*;
@@ -75,93 +75,60 @@ fn read_consonant<I>(it: &mut I) -> Result<u32, DeromanizeError>
         letter: ch,
         position: i,
     };
-    let res = match ch {
-        'g' => 0, // ㄱ
-        'G' => 1, // ㄲ
-        'n' => 2, // ㄴ
-        'd' => 3, // ㄷ
-        'D' => 4, // ㄸ
-        'r' => 5, // ㄹ
-        'l' => 5, // ㄹ
-        'm' => 6, // ㅁ
-        'b' => 7, // ㅂ
-        'B' => 8, // ㅃ
-        's' => 9, // ㅅ
-        'S' => 10, // ㅆ
-        'x' => 11, // ㅇ
-        'j' => 12, // ㅈ
-        'J' => 13, // ㅉ
-        'c' => {
-            match it.next() {
-                Some((_, 'h')) => 14,
-                _ => {
-                    return Err(err);
-                }
+
+    let mut map = &CONSONANTS;
+    let mut res = None;
+
+    while let Some(&(_, ch)) = it.peek() {
+        match map.get(&ch) {
+            Some(&PhfTrie::Leaf(value)) => {
+                it.next();
+                return value.ok_or(err);
+            }
+            Some(&PhfTrie::Node(value, ref children)) => {
+                it.next();
+                res = value;
+                map = children;
+            }
+            None => {
+                break;
             }
         }
-        'k' => 15, // ㅋ
-        't' => 16, // ㅌ
-        'p' => 17, // ㅍ
-        'h' => 18, // ㅎ
-        _ => {
-            return Err(err);
-        }
-    };
-    Ok(res)
+    }
+
+    res.ok_or(err)
 }
 
 fn read_vowel<I>(it: &mut Peekable<I>) -> Result<u32, DeromanizeError>
     where I: Iterator<Item = (usize, char)>
 {
-    use self::DeromanizeError::*;
-
-    let mut state = Err(0);
     let (i, ch) = *it.peek().expect("read_vowel with empty input");
-    let err = InvalidVowel {
+    let err = DeromanizeError::InvalidVowel {
         letter: ch,
         position: i,
     };
 
+    let mut map = &VOWELS;
+    let mut res = None;
+
     while let Some(&(_, ch)) = it.peek() {
-        let next_state = match (state, ch) {
-            (Err(0), 'a') => Ok(0), // a 아
-            (Ok(0), 'e') => Ok(1), // ae 애
-
-            (Err(0), 'e') => Ok(5), // e 에
-            (Ok(5), 'o') => Ok(4), // eo 어
-
-            (Err(0), 'i') => Ok(20), // i 이
-
-            (Err(0), 'o') => Ok(8), // o 오
-            (Ok(8), 'e') => Ok(11), // oe 외
-
-            (Err(0), 'u') => Ok(13), // u 우
-
-            (Err(0), 'w') => Err(1), // w
-            (Err(1), 'a') => Ok(9), // wa 와
-            (Ok(9), 'e') => Ok(10), // wae 왜
-            (Err(1), 'e') => Ok(15), // we 웨
-            (Ok(15), 'o') => Ok(14), // weo 워
-            (Err(1), 'i') => Ok(16), // wi 위
-
-            (Err(0), 'y') => Ok(18), // y ㅡ
-            (Ok(18), 'a') => Ok(2), // ya 야
-            (Ok(2), 'e') => Ok(3), // yae 얘
-            (Ok(18), 'e') => Ok(7), // ye 예
-            (Ok(7), 'o') => Ok(6), // yeo 여
-            (Ok(18), 'i') => Ok(19), // yi 의
-            (Ok(18), 'u') => Ok(17), // yu 유
-            (Ok(18), 'o') => Ok(12), // yo 요
-
-            _ => {
+        match map.get(&ch) {
+            Some(&PhfTrie::Leaf(value)) => {
+                it.next();
+                return value.ok_or(err);
+            }
+            Some(&PhfTrie::Node(value, ref children)) => {
+                it.next();
+                res = value;
+                map = children;
+            }
+            None => {
                 break;
             }
-        };
-        it.next();
-        state = next_state;
+        }
     }
 
-    state.map_err(|_| err)
+    res.ok_or(err)
 }
 
 fn push_block(text: &mut String,
