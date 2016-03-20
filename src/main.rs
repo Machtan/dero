@@ -8,12 +8,45 @@ mod maps;
 mod dero;
 
 use std::env;
+use std::fmt;
 use std::io::{self, Write};
 use std::process::{self, Command, Stdio};
 
 use argonaut::{Parse, ArgDef};
 
 use dero::{DeromanizeError, deromanize};
+
+struct FmtDeromanizeError<'a>(&'a DeromanizeError);
+
+impl<'a> fmt::Display for FmtDeromanizeError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use dero::DeromanizeError::*;
+
+        match *self.0 {
+            InvalidConsonant { letter, position } => {
+                write!(f,
+                       "Expected a valid consonant at position {}, found {:?}",
+                       position + 1,
+                       letter)
+            }
+            InvalidVowel { letter, position } => {
+                write!(f,
+                       "Expected a valid vowel at position {}, found {:?}",
+                       position + 1,
+                       letter)
+            }
+            InvalidLetter { letter, position } => {
+                write!(f,
+                       "Expected a valid consonant or vowel at position {}, found {:?}",
+                       position + 1,
+                       letter)
+            }
+            MissingFinalVowel { position } => {
+                write!(f, "Expected a vowel at position {}", position + 1)
+            }
+        }
+    }
+}
 
 const MIN_BLOCK_VALUE: char = '\u{44032}';
 const MAX_BLOCK_VALUE: char = '\u{55203}';
@@ -65,12 +98,13 @@ fn is_common(ch: char) -> bool {
 }
 
 fn print_error(error: DeromanizeError, text: &str) -> io::Result<()> {
-    // Output '^' padded with '~' to the length given by argument 3.
-    let msg = format!("{}\n{}{:~>3$}\n",
-                      error,
-                      text,
+    let num_chars = text[..error.position()].chars().count() + 1;
+    // Output right-aligned '^' padded with '~' to the length given by argument 3.
+    let msg = format!("{}\n{}\n{:~>3$}\n",
+                      FmtDeromanizeError(&error),
+                      text.trim_right(),
                       '^',
-                      error.char_position() + 1);
+                      num_chars);
     io::stderr().write_all(msg.as_bytes())
 }
 
@@ -135,21 +169,18 @@ fn start_interactive(copy: bool) {
     }
 }
 
+const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
+
+const HELP: &'static str = r#"Optional arguments:
+  --text | -t TEXT      Deromanize TEXT.
+  --look-up | -l TEXT   Deromanize TEXT and look up the result in the OS X
+                        dictionary.
+  --version             Show the version of dero.
+  --help | -h           Show this help message.
+  --no-copy             Do not copy the results to clipboard."#;
+
 fn main() {
     use argonaut::Arg::*;
-
-    const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
-
-    const HELP: &'static str = "Optional arguments:
-  --text | -t TEXT    Deromanize TEXT.
-  \
-                                --look-up | -l TEXT Deromanize and then look TEXT up in the OS X \
-                                dictionary.
-  --version           Show the version of this tool.
-  \
-                                --help | -h         Show this help message.
-  --no-copy           \
-                                Do not copy the results to clipboard.";
 
     let a_text = ArgDef::named_and_short("text", 't').option();
     let a_lookup = ArgDef::named_and_short("look-up", 'l').option();
@@ -168,7 +199,10 @@ fn main() {
         match item {
             Err(err) => {
                 // TODO: Do not use Debug print of the error.
-                let msg = format!("Parse error: {:?}\n{}\n", err, USAGE);
+                let msg = format!("Parse error: {:?}\n{}\n{}\n",
+                                  err,
+                                  USAGE,
+                                  "Try --help for more information.");
                 io::stderr().write(msg.as_bytes()).expect("Could not print error");
                 process::exit(2);
             }
@@ -202,9 +236,9 @@ fn main() {
 
     for (look_up, value) in modes {
         let ok = if look_up {
-            deromanize_single(&value)
-        } else {
             deromanize_and_look_up(&value)
+        } else {
+            deromanize_single(&value)
         };
 
         if !ok {

@@ -1,13 +1,13 @@
 use std::char;
-use std::fmt;
-use maps::{CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP};
+use std::iter::Peekable;
+use maps::{FINAL_MAP, FINAL_COMBINATION_MAP};
 
 const BLOCK_START: u32 = 44032;
 const FINAL_COUNT: u32 = 28;
 const ITEMS_PER_INITIAL: u32 = 588;
 const CONSONANT_IEUNG: u32 = 11;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum DeromanizeError {
     InvalidConsonant {
         letter: char,
@@ -26,114 +26,160 @@ pub enum DeromanizeError {
     },
 }
 
-impl fmt::Display for DeromanizeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::DeromanizeError::*;
-
-        match *self {
-            InvalidConsonant { letter, position } => {
-                write!(f,
-                       "Expected a valid consonant at position {}, found {:?}",
-                       position + 1,
-                       letter)
-            }
-            InvalidVowel { letter, position } => {
-                write!(f,
-                       "Expected a valid vowel at position {}, found {:?}",
-                       position + 1,
-                       letter)
-            }
-            InvalidLetter { letter, position } => {
-                write!(f,
-                       "Expected a valid consonant or vowel at position {}, found {:?}",
-                       position + 1,
-                       letter)
-            }
-            MissingFinalVowel { position } => {
-                write!(f, "Expected a vowel at position {}", position + 1)
-            }
-        }
-    }
-}
-
 impl DeromanizeError {
-    pub fn char_position(&self) -> usize {
+    pub fn position(self) -> usize {
         use self::DeromanizeError::*;
 
-        match *self {
+        match self {
             InvalidConsonant { position, .. } => position,
             InvalidVowel { position, .. } => position,
             InvalidLetter { position, .. } => position,
             MissingFinalVowel { position } => position,
         }
     }
-}
 
-fn read_consonant(text: &str,
-                  i: usize,
-                  indices: &[usize])
-                  -> Result<(u32, usize), DeromanizeError> {
-    use self::DeromanizeError::*;
-    for &len in &[2, 1] {
-        if i + len > indices.len() {
-            // Skip if there aren't enough text left
-            continue;
-        }
-        let part = if i == indices.len() - len {
-            // Handle
-            &text[indices[i]..]
-        } else {
-            &text[indices[i]..indices[i + len]]
-        };
-        if let Some(index) = CONSONANTS.get(part) {
-            return Ok((*index, len));
+    pub fn offset(self, offset: usize) -> DeromanizeError {
+        use self::DeromanizeError::*;
+
+        match self {
+            InvalidConsonant { position, letter } => {
+                InvalidConsonant {
+                    position: position + offset,
+                    letter: letter,
+                }
+            }
+            InvalidVowel { position, letter } => {
+                InvalidVowel {
+                    position: position + offset,
+                    letter: letter,
+                }
+            }
+            InvalidLetter { position, letter } => {
+                InvalidLetter {
+                    position: position + offset,
+                    letter: letter,
+                }
+            }
+            MissingFinalVowel { position } => MissingFinalVowel { position: position + offset },
         }
     }
-    Err(InvalidConsonant {
-        letter: text.chars().nth(i).unwrap(),
-        position: i,
-    })
 }
 
-fn read_vowel(text: &str, i: usize, indices: &[usize]) -> Result<(u32, usize), DeromanizeError> {
+fn read_consonant<I>(it: &mut I) -> Result<u32, DeromanizeError>
+    where I: Iterator<Item = (usize, char)>
+{
     use self::DeromanizeError::*;
-    for &len in &[3, 2, 1] {
-        if i + len > indices.len() {
-            // Skip if there aren't enough text left
-            continue;
-        }
-        let part = if i == indices.len() - len {
-            // Handle
-            &text[indices[i]..]
-        } else {
-            &text[indices[i]..indices[i + len]]
-        };
-        if let Some(index) = VOWELS.get(part) {
-            return Ok((*index, len));
-        }
-    }
-    Err(InvalidVowel {
-        letter: text.chars().nth(i).unwrap(),
+
+    let (i, ch) = it.next().expect("read_consonant with empty input");
+    let err = InvalidConsonant {
+        letter: ch,
         position: i,
-    })
+    };
+    let res = match ch {
+        'g' => 0, // ㄱ
+        'G' => 1, // ㄲ
+        'n' => 2, // ㄴ
+        'd' => 3, // ㄷ
+        'D' => 4, // ㄸ
+        'r' => 5, // ㄹ
+        'l' => 5, // ㄹ
+        'm' => 6, // ㅁ
+        'b' => 7, // ㅂ
+        'B' => 8, // ㅃ
+        's' => 9, // ㅅ
+        'S' => 10, // ㅆ
+        'x' => 11, // ㅇ
+        'j' => 12, // ㅈ
+        'J' => 13, // ㅉ
+        'c' => {
+            match it.next() {
+                Some((_, 'h')) => 14,
+                _ => {
+                    return Err(err);
+                }
+            }
+        }
+        'k' => 15, // ㅋ
+        't' => 16, // ㅌ
+        'p' => 17, // ㅍ
+        'h' => 18, // ㅎ
+        _ => {
+            return Err(err);
+        }
+    };
+    Ok(res)
+}
+
+fn read_vowel<I>(it: &mut Peekable<I>) -> Result<u32, DeromanizeError>
+    where I: Iterator<Item = (usize, char)>
+{
+    use self::DeromanizeError::*;
+
+    let mut state = Err(0);
+    let (i, ch) = *it.peek().expect("read_vowel with empty input");
+    let err = InvalidVowel {
+        letter: ch,
+        position: i,
+    };
+
+    while let Some(&(_, ch)) = it.peek() {
+        let next_state = match (state, ch) {
+            (Err(0), 'a') => Ok(0), // a 아
+            (Ok(0), 'e') => Ok(1), // ae 애
+
+            (Err(0), 'e') => Ok(5), // e 에
+            (Ok(5), 'o') => Ok(4), // eo 어
+
+            (Err(0), 'i') => Ok(20), // i 이
+
+            (Err(0), 'o') => Ok(8), // o 오
+            (Ok(8), 'e') => Ok(11), // oe 외
+
+            (Err(0), 'u') => Ok(13), // u 우
+
+            (Err(0), 'w') => Err(1), // w
+            (Err(1), 'a') => Ok(9), // wa 와
+            (Ok(9), 'e') => Ok(10), // wae 왜
+            (Err(1), 'e') => Ok(15), // we 웨
+            (Ok(15), 'o') => Ok(14), // weo 워
+            (Err(1), 'i') => Ok(16), // wi 위
+
+            (Err(0), 'y') => Ok(18), // y ㅡ
+            (Ok(18), 'a') => Ok(2), // ya 야
+            (Ok(2), 'e') => Ok(3), // yae 얘
+            (Ok(18), 'e') => Ok(7), // ye 예
+            (Ok(7), 'o') => Ok(6), // yeo 여
+            (Ok(18), 'i') => Ok(19), // yi 의
+            (Ok(18), 'u') => Ok(17), // yu 유
+            (Ok(18), 'o') => Ok(12), // yo 요
+
+            _ => {
+                break;
+            }
+        };
+        it.next();
+        state = next_state;
+    }
+
+    state.map_err(|_| err)
 }
 
 fn push_block(text: &mut String,
               initial: u32,
               vowel: u32,
               first_final: Option<u32>,
-              last_final: Option<u32>) {
+              second_final: Option<u32>) {
     let mut value = BLOCK_START;
     value += initial * ITEMS_PER_INITIAL;
     value += vowel * FINAL_COUNT;
     let mut mapped_final = 0;
     if let Some(ff) = first_final {
         mapped_final += *FINAL_MAP.get(&ff).expect("Invalid first final");
-        if let Some(lf) = last_final {
+        if let Some(sf) = second_final {
             mapped_final += *FINAL_COMBINATION_MAP.get(&mapped_final)
                                                   .expect("Invalid first final after mapping")
-                                                  .get(&lf)
-                                                  .expect("Invalid last final");
+                                                  .get(&sf)
+                                                  .expect("Invalid second final");
         }
     }
     value += mapped_final;
@@ -141,73 +187,57 @@ fn push_block(text: &mut String,
     text.push(char::from_u32(value).expect("Invalid UTF-8 value created from block"));
 }
 
-fn deromanize_part(part: &str, start_index: usize) -> Result<String, DeromanizeError> {
-    use self::DeromanizeError::*;
-    match deromanize_validated(part) {
-        Ok(deromanized) => Ok(deromanized),
-        Err(InvalidConsonant { letter, position }) => {
-            Err(InvalidConsonant {
-                letter: letter,
-                position: start_index + position,
-            })
-        }
-        Err(InvalidVowel { letter, position }) => {
-            Err(InvalidVowel {
-                letter: letter,
-                position: start_index + position,
-            })
-        }
-        Err(InvalidLetter { letter, position }) => {
-            Err(InvalidLetter {
-                letter: letter,
-                position: start_index + position,
-            })
-        }
-        Err(MissingFinalVowel { position }) => {
-            Err(MissingFinalVowel { position: start_index + position })
-        }
-    }
-}
-
-pub fn deromanize<F>(text: &str, allow_char: F) -> Result<String, DeromanizeError>
+pub fn deromanize<F>(text: &str, is_break_char: F) -> Result<String, DeromanizeError>
     where F: Fn(char) -> bool
 {
     let mut output = String::new();
-    let mut start = 0;
-    let mut start_char_index = 0;
-    let indices: Vec<_> = text.char_indices().collect();
-    for (n, &(i, ch)) in indices.iter().enumerate() {
-        if allow_char(ch) {
-            // Check if it is time to break a block
-            // println!("Valid break char at {}: '{}'", n, ch);
-            if i != start {
-                // Earlier stuff
+    let mut it = text.char_indices();
+    let mut start = None;
+
+    for (i, ch) in &mut it {
+        if is_break_char(ch) {
+            if let Some(start) = start {
                 let part = &text[start..i];
-                let res = try!(deromanize_part(part, start_char_index));
+                let res = try!(deromanize_validated(part).map_err(|e| e.offset(start)));
                 output.push_str(&res);
             }
             output.push(ch);
-            start_char_index = n + 1;
-            if n != indices.len() - 1 {
-                start = indices[n + 1].0;
-            }
+            start = None;
+        } else if start.is_none() {
+            start = Some(i);
         }
     }
-    if start_char_index != indices.len() {
+    if let Some(start) = start {
         let part = &text[start..];
-        // println!("Handling remainder...: part: ({}..): '{}'", start, part);
-        let res = try!(deromanize_part(part, start_char_index));
+        let res = try!(deromanize_validated(part).map_err(|e| e.offset(start)));
         output.push_str(&res);
     }
+
     Ok(output)
 }
 
+#[derive(Debug)]
 enum DeroState {
-    ReadInitial,
-    ReadVowel,
-    ReadFirstFinal,
-    ReadSecondFinal,
-    ReadInitialOrVowel,
+    Initial,
+    AfterInitial {
+        initial: u32,
+    },
+    AfterMissingConsonant,
+    AfterVowel {
+        initial: u32,
+        vowel: u32,
+    },
+    AfterFirstFinal {
+        initial: u32,
+        vowel: u32,
+        first_final: u32,
+    },
+    AfterSecondFinal {
+        initial: u32,
+        vowel: u32,
+        first_final: u32,
+        second_final: u32,
+    },
 }
 
 pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
@@ -215,151 +245,142 @@ pub fn deromanize_validated(text: &str) -> Result<String, DeromanizeError> {
     use self::DeroState::*;
     let mut output = String::new();
 
-    let mut initial: u32 = 0;
-    let mut vowel: u32 = 0;
-    let mut first_final: u32 = 0;
-    let mut last_final: u32 = 0;
+    let mut state = Initial;
 
-    let mut state = ReadInitial;
-    let indices: Vec<_> = text.char_indices().map(|(i, _)| i).collect();
-    let mut i = 0;
-    while i < indices.len() {
-        // println!("{}: ({}: {})", i, pos, text.chars().nth(i).unwrap());
+    let mut it = text.char_indices().peekable();
+
+    while it.peek().is_some() {
         match state {
-            ReadInitial => {
-                // Read initial
-                // Allow vowels with no consonant in the beginning of a block sequence
-                if i == 0 {
-                    if let Ok((index, len)) = read_vowel(text, i, &indices) {
-                        initial = CONSONANT_IEUNG;
-                        vowel = index;
-                        state = ReadFirstFinal;
-                        i += len;
-                        continue;
-                    }
+            Initial => {
+                let mut copy = it.clone();
+                if let Ok(code) = read_consonant(&mut copy) {
+                    it = copy;
+                    state = AfterInitial { initial: code };
+                    continue;
                 }
-                let (index, len) = try!(read_consonant(text, i, &indices));
-                initial = index;
-                state = ReadVowel;
-                i += len;
+                state = AfterMissingConsonant;
             }
-            ReadVowel => {
-                // Read Vowel
-                let (index, len) = try!(read_vowel(text, i, &indices));
-                vowel = index;
-                state = ReadFirstFinal;
-                i += len;
+            AfterInitial { initial } => {
+                let code = try!(read_vowel(&mut it));
+                state = AfterVowel {
+                    initial: initial,
+                    vowel: code,
+                };
             }
-            ReadFirstFinal => {
+            AfterMissingConsonant => {
+                let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                let code = match read_vowel(&mut it) {
+                    Ok(code) => code,
+                    Err(_) => {
+                        return Err(InvalidLetter {
+                            position: i,
+                            letter: ch,
+                        });
+                    }
+                };
+                state = AfterVowel {
+                    initial: CONSONANT_IEUNG,
+                    vowel: code,
+                }
+            }
+            AfterVowel { initial, vowel } => {
                 // Read consonant (or the beginning of next block)
-                // Read a consonant
-                if let Ok((index, len)) = read_consonant(text, i, &indices) {
-                    if FINAL_MAP.get(&index).is_some() {
-                        // If it cannot be a final, goto 1
-                        first_final = index;
-                        state = ReadSecondFinal;
-                    } else {
-                        push_block(&mut output, initial, vowel, None, None);
-                        initial = index;
-                        state = ReadVowel;
-                    }
-                    i += len;
-                    // Allow two vowels in a row and just prefix ieung ('ㅇ')
-                } else if let Ok((index, len)) = read_vowel(text, i, &indices) {
-                    push_block(&mut output, initial, vowel, None, None);
-                    initial = CONSONANT_IEUNG;
-                    vowel = index;
-                    state = ReadFirstFinal;
-                    i += len;
-                } else {
-                    return Err(InvalidLetter {
-                        letter: text.chars().nth(i).unwrap(),
-                        position: i,
-                    });
-                }
-            }
-            ReadSecondFinal => {
-                // If this is a vowel: goto 2 | otherwise final consonant or next block
-                if let Ok((index, len)) = read_consonant(text, i, &indices) {
-                    let mapped = *FINAL_MAP.get(&first_final).unwrap();
-                    // Can anything follow the other final?
-                    if let Some(map) = FINAL_COMBINATION_MAP.get(&mapped) {
-                        // Can this consonant follow the other final?
-                        if map.get(&index).is_some() {
-                            last_final = index;
-                            state = ReadInitialOrVowel;
-                        } else {
-                            // goto 1
-                            push_block(&mut output, initial, vowel, Some(first_final), None);
-                            initial = index;
-                            state = ReadVowel;
+                // We clone the iterator so that read_vowel does not advance `it`.
+                let mut copy = it.clone();
+                if let Ok(code) = read_consonant(&mut copy) {
+                    // Commit the consumed characters.
+                    it = copy;
+                    state = if FINAL_MAP.contains_key(&code) {
+                        AfterFirstFinal {
+                            initial: initial,
+                            vowel: vowel,
+                            first_final: code,
                         }
                     } else {
-                        // goto 1
-                        push_block(&mut output, initial, vowel, Some(first_final), None);
-                        initial = index;
-                        state = ReadVowel;
-                    }
-                    i += len;
-
-                } else if let Ok((index, len)) = read_vowel(text, i, &indices) {
-                    push_block(&mut output, initial, vowel, None, None);
-                    initial = first_final;
-                    vowel = index;
-                    i += len;
-                    state = ReadFirstFinal;
-                } else {
-                    return Err(InvalidLetter {
-                        letter: text.chars().nth(i).unwrap(),
-                        position: i,
-                    });
+                        push_block(&mut output, initial, vowel, None, None);
+                        AfterInitial { initial: code }
+                    };
+                    continue;
                 }
+
+                push_block(&mut output, initial, vowel, None, None);
+
+                state = AfterMissingConsonant;
             }
-            ReadInitialOrVowel => {
+            AfterFirstFinal { initial, vowel, first_final } => {
+                // If this is a vowel: goto 2 | otherwise final consonant or next block
+                // We clone the iterator so that read_vowel does not advance `it`.
+                let mut copy = it.clone();
+                if let Ok(code) = read_consonant(&mut copy) {
+                    // Commit the consumed characters.
+                    it = copy;
+                    let mapped = *FINAL_MAP.get(&first_final)
+                                           .expect("invariant broken; first_final must be in \
+                                                    FINAL_MAP");
+                    // Can anything follow the other final?
+
+                    let can_follow = FINAL_COMBINATION_MAP.get(&mapped)
+                                                          .and_then(|map| map.get(&code))
+                                                          .is_some();
+                    state = if can_follow {
+                        AfterSecondFinal {
+                            initial: initial,
+                            vowel: vowel,
+                            first_final: first_final,
+                            second_final: code,
+                        }
+                    } else {
+                        push_block(&mut output, initial, vowel, Some(first_final), None);
+                        AfterInitial { initial: code }
+                    };
+                    continue;
+                }
+
+                push_block(&mut output, initial, vowel, None, None);
+
+                state = AfterMissingConsonant;
+            }
+            AfterSecondFinal { initial, vowel, first_final, second_final } => {
                 // full block. If this is a consonant: goto 1, if vowel: goto 2
-                if let Ok((index, len)) = read_consonant(text, i, &indices) {
+                // We clone the iterator so that read_vowel does not advance `it`.
+                let mut copy = it.clone();
+                if let Ok(code) = read_consonant(&mut copy) {
+                    // Commit the consumed characters.
+                    it = copy;
                     push_block(&mut output,
                                initial,
                                vowel,
                                Some(first_final),
-                               Some(last_final));
-                    initial = index;
-                    i += len;
-                    state = ReadVowel;
-                } else if let Ok((index, len)) = read_vowel(text, i, &indices) {
-                    push_block(&mut output, initial, vowel, Some(first_final), None);
-                    initial = last_final;
-                    vowel = index;
-                    i += len;
-                    state = ReadFirstFinal;
-                } else {
-                    return Err(InvalidLetter {
-                        letter: text.chars().nth(i).unwrap(),
-                        position: i,
-                    });
+                               Some(second_final));
+                    state = AfterInitial { initial: code };
+                    continue;
                 }
+
+                push_block(&mut output, initial, vowel, Some(first_final), None);
+
+                state = AfterMissingConsonant;
             }
         }
     }
 
     match state {
-        ReadVowel => {
-            return Err(MissingFinalVowel { position: indices.len() });
+        AfterInitial { .. } => {
+            return Err(MissingFinalVowel { position: text.len() });
         }
-        ReadFirstFinal => {
+        AfterVowel { initial, vowel } => {
             push_block(&mut output, initial, vowel, None, None);
         }
-        ReadSecondFinal => {
+        AfterFirstFinal { initial, vowel, first_final } => {
             push_block(&mut output, initial, vowel, Some(first_final), None);
         }
-        ReadInitialOrVowel => {
+        AfterSecondFinal { initial, vowel, first_final, second_final } => {
             push_block(&mut output,
                        initial,
                        vowel,
                        Some(first_final),
-                       Some(last_final));
+                       Some(second_final));
         }
-        _ => {}
+        Initial | AfterMissingConsonant => {}
     }
     Ok(output)
 }
