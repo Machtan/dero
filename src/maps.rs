@@ -1,28 +1,5 @@
 extern crate phf;
 
-pub static CONSONANTS: phf::Map<&'static str, u32> = phf_map! {
-    "g" => 0, // => "ㄱ",
-    "G" => 1, // => "ㄲ",
-    "n" => 2, // => "ㄴ",
-    "d" => 3, // => "ㄷ",
-    "D" => 4, // => "ㄸ",
-    "r" => 5, // => "ㄹ",
-    "l" => 5, // => "ㄹ",
-    "m" => 6, // => "ㅁ",
-    "b" => 7, // => "ㅂ",
-    "B" => 8, // => "ㅃ",
-    "s" => 9, // => "ㅅ",
-    "S" => 10, // => "ㅆ",
-    "x" => 11, // => "ㅇ",
-    "j" => 12, // => "ㅈ",
-    "J" => 13, // => "ㅉ",
-    "ch" => 14, // => "ㅊ",
-    "k" => 15, // => "ㅋ",
-    "t" => 16, // => "ㅌ",
-    "p" => 17, // => "ㅍ",
-    "h" => 18, // => "ㅎ",
-};
-
 // Maps from an "initial" consonant to a final consonant
 pub const FINAL_MAP: phf::Map<u32, u32> = phf_map! {
     // 0, //
@@ -54,7 +31,7 @@ pub const FINAL_MAP: phf::Map<u32, u32> = phf_map! {
     17u32 => 26, // ㅍ
     18u32 => 27, // ㅎ
 };
-//FINALS = " ㄱ ㄲ ㄱㅅ ㄴ ㄴㅈ ㄴㅎ ㄷ ㄹ ㄹㄱ ㄹㅁ ㄹㅂ ㄹㅅ ㄹㅌ ㄹㅍ ㄹㅎ ㅁ ㅂ ㅂㅅ ㅅ ㅆ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ".split(" ")
+// FINALS = " ㄱ ㄲ ㄱㅅ ㄴ ㄴㅈ ㄴㅎ ㄷ ㄹ ㄹㄱ ㄹㅁ ㄹㅂ ㄹㅅ ㄹㅌ ㄹㅍ ㄹㅎ ㅁ ㅂ ㅂㅅ ㅅ ㅆ ㅇ ㅈ ㅊ ㅋ ㅌ ㅍ ㅎ".split(" ")
 
 // maps from a MAPPED first final consonant
 // to valid INITIAL consonants that may follow it
@@ -81,30 +58,68 @@ pub const FINAL_COMBINATION_MAP: phf::Map<u32, phf::Map<u32, u32>> = phf_map! {
     }
 };
 
-pub static VOWELS: phf::Map<&'static str, u32> = phf_map! {
-    "a" => 0, // => "아",
-    "ae" => 1, // => "애",
-    "ya" => 2, // => "야",
-    "yae" => 3, // => "얘",
+pub enum PhfTrie<T: 'static> {
+    Leaf(T),
+    Node(T, phf::Map<char, PhfTrie<T>>),
+}
 
-    "eo" => 4, // => "어",
-    "e" => 5, // => "에",
-    "yeo" => 6, // => "여",
-    "ye" => 7, // => "예",
+use self::PhfTrie::*;
 
-    "o" => 8, // => "오",
-    "wa" => 9, // => "와",
-    "wae" => 10, // => "왜",
-    "oe" => 11, // => "외",
-    "yo" => 12, // => "요",
+pub const VOWELS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
+    'a' => Node(Some(0), phf_map! { // 아
+        'e' => Leaf(Some(1)), // 애
+    }),
+    'e' => Node(Some(5), phf_map! { // 에
+        'o' => Leaf(Some(4)), // 어
+    }),
+    'i' => Leaf(Some(20)), // 이
+    'o' => Node(Some(8), phf_map! { // 오
+        'e' => Leaf(Some(11)), // 외
+    }),
+    'u' => Leaf(Some(13)), // 우
+    'w' => Node(None, phf_map! {
+        'a' => Node(Some(9), phf_map! { // 와
+            'e' => Leaf(Some(10)), // 왜
+        }),
+        'e' => Node(Some(15), phf_map! { // 웨
+            'o' => Leaf(Some(14)), // 워
+        }),
+        'i' => Leaf(Some(16)), // 위
+    }),
+    'y' => Node(Some(18), phf_map! { // ㅡ
+        'a' => Node(Some(2), phf_map! { // 야
+            'e' => Leaf(Some(3)), // 얘
+        }),
+        'e' => Node(Some(7), phf_map! { // 예
+            'o' => Leaf(Some(6)), // 여
+        }),
+        'i' => Leaf(Some(19)), // 의
+        'u' => Leaf(Some(17)), // 유
+        'o' => Leaf(Some(12)), // 요
+    }),
+};
 
-    "u" => 13, // => "우",
-    "weo" => 14, // => "워",
-    "we" => 15, // => "웨",
-    "wi" => 16, // => "위",
-    "yu" => 17, // => "유",
-
-    "y" => 18, // => "ㅡ",
-    "yi" => 19, // => "의",
-    "i" => 20, // => "이",
+pub const CONSONANTS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
+    'g' => Leaf(Some(0)), // ㄱ
+    'G' => Leaf(Some(1)), // ㄲ
+    'n' => Leaf(Some(2)), // ㄴ
+    'd' => Leaf(Some(3)), // ㄷ
+    'D' => Leaf(Some(4)), // ㄸ
+    'r' => Leaf(Some(5)), // ㄹ
+    'l' => Leaf(Some(5)), // ㄹ
+    'm' => Leaf(Some(6)), // ㅁ
+    'b' => Leaf(Some(7)), // ㅂ
+    'B' => Leaf(Some(8)), // ㅃ
+    's' => Leaf(Some(9)), // ㅅ
+    'S' => Leaf(Some(10)), // ㅆ
+    'x' => Leaf(Some(11)), // ㅇ
+    'j' => Leaf(Some(12)), // ㅈ
+    'J' => Leaf(Some(13)), // ㅉ
+    'c' => Node(None, phf_map! {
+        'h' => Leaf(Some(14)),
+    }),
+    'k' => Leaf(Some(15)), // ㅋ
+    't' => Leaf(Some(16)), // ㅌ
+    'p' => Leaf(Some(17)), // ㅍ
+    'h' => Leaf(Some(18)), // ㅎ
 };

@@ -3,6 +3,10 @@ authors = ["Machtan <jako3047@gmail.com>"]
 name = "dero"
 version = "0.1.0"
 
+[[bin]]
+name = "dero"
+doc = false
+
 [dependencies]
 argonaut = "0.11.0"
 phf = "0.7.12"
