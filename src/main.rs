@@ -62,8 +62,20 @@ fn copy_to_clipboard(text: &str) {
     child.wait().expect("Error while running pbcopy");
 }
 
+#[cfg(target_os = "macos")]
+fn look_up_word(text: &str) {
+    let url = format!("dict://{}", &text);
+    Command::new("open")
+                     .arg(&url)
+                     .status()
+                     .expect("Could not open dictionary app");
+}
+
 #[cfg(not(target_os = "macos"))]
 fn copy_to_clipboard(text: &str) {}
+
+#[cfg(not(target_os = "macos"))]
+fn look_up_word(text: &str) {}
 
 static PUNCTUATION: phf::Set<char> = phf_set! {
     '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+',
@@ -97,29 +109,16 @@ fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
     io::stderr().write_all(msg.as_bytes())
 }
 
-fn deromanize_and_look_up(text: &str) -> bool {
+fn deromanize_single(text: &str, copy: bool, look_up: bool) -> bool {
     match dero::deromanize_words(text, is_boundary) {
         Ok(output) => {
             println!("{}", &output);
-            let url = format!("dict://{}", &output);
-            let status = Command::new("open")
-                             .arg(&url)
-                             .status()
-                             .expect("Could not open dictionary app");
-            status.success()
-        }
-        Err(error) => {
-            print_error(error, text).expect("Could not print error");
-            false
-        }
-    }
-}
-
-fn deromanize_single(text: &str) -> bool {
-    match dero::deromanize_words(text, is_boundary) {
-        Ok(output) => {
-            copy_to_clipboard(output.trim_right());
-            println!("{}", &output);
+            if copy {
+                copy_to_clipboard(&output);
+            }
+            if look_up {
+                look_up_word(&output);
+            }
             true
         }
         Err(error) => {
@@ -129,7 +128,7 @@ fn deromanize_single(text: &str) -> bool {
     }
 }
 
-fn start_interactive(copy: bool) {
+fn start_interactive(copy: bool, look_up: bool) {
     println!("Welcome to the deromanization tool.");
     println!("Write romaja to convert it to 한글.");
     println!("( Press Ctrl + C to quit )");
@@ -148,6 +147,9 @@ fn start_interactive(copy: bool) {
                 let trimmed = output.trim_right();
                 if copy {
                     copy_to_clipboard(trimmed);
+                }
+                if look_up {
+                    look_up_word(trimmed);
                 }
                 println!("=> {}", trimmed);
             }
@@ -170,19 +172,20 @@ const HELP: &'static str = r#"Optional arguments:
 
 fn main() {
     use argonaut::Arg::*;
-
-    let a_text = ArgDef::named_and_short("text", 't').option();
-    let a_lookup = ArgDef::named_and_short("look-up", 'l').option();
+    
+    let a_text_parts = ArgDef::optional_trail();
+    let a_lookup = ArgDef::named_and_short("look-up", 'l').switch();
+    let a_no_copy = ArgDef::named("no-copy").switch();
     let a_version = ArgDef::named("version").switch();
     let a_help = ArgDef::named_and_short("help", 'h').switch();
-    let a_no_copy = ArgDef::named("no-copy").switch();
-    let expected = &[a_text, a_lookup, a_version, a_help, a_no_copy];
+    let expected = &[a_text_parts, a_lookup, a_version, a_help, a_no_copy];
 
     let args: Vec<_> = env::args().skip(1).collect();
     let parse = Parse::new(expected, &args).expect("Invalid definitions");
 
-    let mut modes = Vec::new();
-    let mut interactive_copy = true;
+    let mut parts = Vec::new();
+    let mut copy_text = true;
+    let mut look_up = false;
 
     for item in parse {
         match item {
@@ -195,16 +198,14 @@ fn main() {
                 io::stderr().write(msg.as_bytes()).expect("Could not print error");
                 process::exit(2);
             }
-            Ok(Option("text", value)) => {
-                // look_up = false
-                modes.push((false, value));
-            }
-            Ok(Option("look-up", value)) => {
-                // look_up = true
-                modes.push((true, value));
+            Ok(TrailPart(value)) => {
+                parts.push(value);
+            },
+            Ok(Switch("look-up")) => {
+                look_up = true
             }
             Ok(Switch("no-copy")) => {
-                interactive_copy = false;
+                copy_text = false;
             }
             Ok(Switch("help")) => {
                 println!("{}\n\n{}", USAGE, HELP);
@@ -218,19 +219,13 @@ fn main() {
         }
     }
 
-    if modes.is_empty() {
-        start_interactive(interactive_copy);
+    if parts.is_empty() {
+        start_interactive(copy_text, look_up);
         return;
     }
 
-    for (look_up, value) in modes {
-        let ok = if look_up {
-            deromanize_and_look_up(&value)
-        } else {
-            deromanize_single(&value)
-        };
-
-        if !ok {
+    for part in parts {
+        if deromanize_single(part, copy_text, look_up) != true {
             process::exit(1);
         }
     }

@@ -166,7 +166,6 @@ enum DeroState {
     AfterInitial {
         initial: u32,
     },
-    AfterMissingConsonant,
     AfterVowel {
         initial: u32,
         vowel: u32,
@@ -192,15 +191,25 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
     let mut it = text.char_indices().peekable();
 
     while it.peek().is_some() {
+        //println!("State: {:?}", state);
         match state {
             Initial => {
                 let mut copy = it.clone();
                 if let Ok(code) = read_consonant(&mut copy) {
                     it = copy;
                     state = AfterInitial { initial: code };
-                    continue;
+                } else if let Ok(code) = read_vowel(&mut copy) {
+                    it = copy;
+                    state = AfterVowel { 
+                        initial: CONSONANT_IEUNG, vowel: code
+                    };
+                } else {
+                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    return Err(Error {
+                        position: i,
+                        kind: InvalidLetter(ch),
+                    });
                 }
-                state = AfterMissingConsonant;
             }
             AfterInitial { initial } => {
                 let code = try!(read_vowel(&mut it));
@@ -208,23 +217,7 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                     initial: initial,
                     vowel: code,
                 };
-            }
-            AfterMissingConsonant => {
-                let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
-                let code = match read_vowel(&mut it) {
-                    Ok(code) => code,
-                    Err(_) => {
-                        return Err(Error {
-                            position: i,
-                            kind: InvalidLetter(ch),
-                        });
-                    }
-                };
-                state = AfterVowel {
-                    initial: CONSONANT_IEUNG,
-                    vowel: code,
-                }
-            }
+            },
             AfterVowel { initial, vowel } => {
                 // Read consonant (or the beginning of next block)
                 // We clone the iterator so that read_vowel does not advance `it`.
@@ -242,12 +235,19 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                         push_block(output, initial, vowel, None, None);
                         AfterInitial { initial: code }
                     };
-                    continue;
+                } else if let Ok(code) = read_vowel(&mut copy) {
+                    it = copy;
+                    push_block(output, initial, vowel, None, None);
+                    state = AfterVowel { 
+                        initial: CONSONANT_IEUNG, vowel: code,
+                    };
+                } else {
+                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    return Err(Error {
+                        position: i,
+                        kind: InvalidLetter(ch),
+                    });
                 }
-
-                push_block(output, initial, vowel, None, None);
-
-                state = AfterMissingConsonant;
             }
             AfterFirstFinal { initial, vowel, first_final } => {
                 // If this is a vowel: goto 2 | otherwise final consonant or next block
@@ -275,12 +275,19 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                         push_block(output, initial, vowel, Some(first_final), None);
                         AfterInitial { initial: code }
                     };
-                    continue;
+                } else if let Ok(code) = read_vowel(&mut copy) {
+                    it = copy;
+                    push_block(output, initial, vowel, None, None);
+                    state = AfterVowel {
+                        initial: first_final, vowel: code
+                    };
+                } else {
+                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    return Err(Error {
+                        position: i,
+                        kind: InvalidLetter(ch),
+                    });
                 }
-
-                push_block(output, initial, vowel, None, None);
-
-                state = AfterMissingConsonant;
             }
             AfterSecondFinal { initial, vowel, first_final, second_final } => {
                 // full block. If this is a consonant: goto 1, if vowel: goto 2
@@ -295,12 +302,17 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                                Some(first_final),
                                Some(second_final));
                     state = AfterInitial { initial: code };
-                    continue;
+                } else if let Ok(code) = read_vowel(&mut copy) {
+                    it = copy;
+                    push_block(output, initial, vowel, Some(first_final), None);
+                    state = AfterVowel { initial: second_final, vowel: code };
+                } else {
+                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    return Err(Error {
+                        position: i,
+                        kind: InvalidLetter(ch),
+                    });
                 }
-
-                push_block(output, initial, vowel, Some(first_final), None);
-
-                state = AfterMissingConsonant;
             }
         }
     }
@@ -325,7 +337,7 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                        Some(first_final),
                        Some(second_final));
         }
-        Initial | AfterMissingConsonant => {}
+        Initial => {}
     }
     Ok(())
 }
