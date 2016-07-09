@@ -42,20 +42,17 @@ impl fmt::Display for FmtDeroError {
     }
 }
 
-const MIN_BLOCK_VALUE: char = '\u{44032}';
-const MAX_BLOCK_VALUE: char = '\u{55203}';
-
 #[cfg(target_os = "macos")]
 fn copy_to_clipboard(text: &str) {
     // println!("Copying '{}' to the clipboard...", text);
     let mut child = Command::new("/usr/bin/pbcopy")
-                        .arg(text)
-                        .stdin(Stdio::piped())
-                        .spawn()
-                        .expect("Could not run pbcopy");
+        .arg(text)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("Could not run pbcopy");
     if let Some(ref mut stdin) = child.stdin {
         stdin.write_all(text.as_bytes())
-             .expect("Could not write to pbcopy");
+            .expect("Could not write to pbcopy");
     } else {
         unreachable!();
     }
@@ -66,9 +63,9 @@ fn copy_to_clipboard(text: &str) {
 fn look_up_word(text: &str) {
     let url = format!("dict://{}", &text);
     Command::new("open")
-                     .arg(&url)
-                     .status()
-                     .expect("Could not open dictionary app");
+        .arg(&url)
+        .status()
+        .expect("Could not open dictionary app");
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -76,27 +73,6 @@ fn copy_to_clipboard(text: &str) {}
 
 #[cfg(not(target_os = "macos"))]
 fn look_up_word(text: &str) {}
-
-static PUNCTUATION: phf::Set<char> = phf_set! {
-    '.', ',', '\'', '"', '/', '\\', '?', '!', '#', '%', '-', '+',
-    '(', ')', '[', ']', '{', '}',
-    '@', '*', '&', ':', ';', '_', '^', '`', '~', '$', '|'
-};
-
-#[inline]
-fn is_punctuation(ch: char) -> bool {
-    PUNCTUATION.contains(&ch)
-}
-
-#[inline]
-fn is_korean(ch: char) -> bool {
-    MIN_BLOCK_VALUE <= ch && ch <= MAX_BLOCK_VALUE
-}
-
-#[inline]
-fn is_boundary(ch: char) -> bool {
-    ch.is_whitespace() || is_punctuation(ch) || is_korean(ch)
-}
 
 fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
     let num_chars = text[..error.position].chars().count() + 1;
@@ -110,7 +86,7 @@ fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
 }
 
 fn deromanize_single(text: &str, copy: bool, look_up: bool) -> bool {
-    match dero::deromanize_words(text, is_boundary) {
+    match dero::deromanize_lossy(text) {
         Ok(output) => {
             println!("{}", &output);
             if copy {
@@ -142,7 +118,7 @@ fn start_interactive(copy: bool, look_up: bool) {
             println!("");
             return;
         }
-        match dero::deromanize_words(&input, is_boundary) {
+        match dero::deromanize_lossy(&input) {
             Ok(output) => {
                 let trimmed = output.trim_right();
                 if copy {
@@ -163,7 +139,6 @@ fn start_interactive(copy: bool, look_up: bool) {
 const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
 
 const HELP: &'static str = r#"Optional arguments:
-  --text | -t TEXT      Deromanize TEXT.
   --look-up | -l TEXT   Deromanize TEXT and look up the result in the OS X
                         dictionary.
   --version             Show the version of dero.
@@ -172,7 +147,7 @@ const HELP: &'static str = r#"Optional arguments:
 
 fn main() {
     use argonaut::Arg::*;
-    
+
     let a_text_parts = ArgDef::optional_trail();
     let a_lookup = ArgDef::named_and_short("look-up", 'l').switch();
     let a_no_copy = ArgDef::named("no-copy").switch();
@@ -200,10 +175,8 @@ fn main() {
             }
             Ok(TrailPart(value)) => {
                 parts.push(value);
-            },
-            Ok(Switch("look-up")) => {
-                look_up = true
             }
+            Ok(Switch("look-up")) => look_up = true,
             Ok(Switch("no-copy")) => {
                 copy_text = false;
             }

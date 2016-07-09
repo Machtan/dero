@@ -7,7 +7,7 @@ mod maps;
 
 use std::char;
 use std::iter::Peekable;
-use maps::{PhfTrie, CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP};
+use maps::{PhfTrie, CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP, VALID_LETTERS};
 
 const BLOCK_START: u32 = 44032;
 const FINAL_COUNT: u32 = 28;
@@ -38,7 +38,7 @@ pub enum ErrorKind {
 }
 
 fn read_consonant<I>(it: &mut Peekable<I>) -> Result<u32, Error>
-    where I: Iterator<Item = (usize, char)>
+    where I: Iterator<Item = (usize, char)> + Clone
 {
     let (i, ch) = *it.peek().expect("read_consonant with empty input");
     let err = Error {
@@ -48,24 +48,29 @@ fn read_consonant<I>(it: &mut Peekable<I>) -> Result<u32, Error>
 
     let mut map = &CONSONANTS;
     let mut res = None;
+    let mut copy = it.clone();
+    let mut chars_read = 0;
 
-    while let Some(&(_, ch)) = it.peek() {
+    while let Some(&(_, ch)) = copy.peek() {
         match map.get(&ch) {
             Some(&PhfTrie::Leaf(value)) => {
-                it.next();
+                chars_read += 1;
+                for _ in 0..chars_read {
+                    it.next();
+                }
                 return value.ok_or(err);
             }
             Some(&PhfTrie::Node(value, ref children)) => {
-                it.next();
+                copy.next();
                 res = value;
                 map = children;
+                chars_read += 1;
             }
             None => {
                 break;
             }
         }
     }
-
     res.ok_or(err)
 }
 
@@ -113,10 +118,10 @@ fn push_block(text: &mut String,
     if let Some(ff) = first_final {
         mapped_final += *FINAL_MAP.get(&ff).expect("Invalid first final");
         if let Some(sf) = second_final {
-            mapped_final += *FINAL_COMBINATION_MAP.get(&ff)
-                                                  .expect("Invalid first final after mapping")
-                                                  .get(&sf)
-                                                  .expect("Invalid second final");
+            mapped_final += *FINAL_COMBINATION_MAP.get(&mapped_final)
+                .expect("Invalid first final after mapping")
+                .get(&sf)
+                .expect("Invalid second final");
         }
     }
     value += mapped_final;
@@ -191,7 +196,7 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
     let mut it = text.char_indices().peekable();
 
     while it.peek().is_some() {
-        //println!("State: {:?}", state);
+        // println!("State: {:?}", state);
         match state {
             Initial => {
                 let mut copy = it.clone();
@@ -200,11 +205,13 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                     state = AfterInitial { initial: code };
                 } else if let Ok(code) = read_vowel(&mut copy) {
                     it = copy;
-                    state = AfterVowel { 
-                        initial: CONSONANT_IEUNG, vowel: code
+                    state = AfterVowel {
+                        initial: CONSONANT_IEUNG,
+                        vowel: code,
                     };
                 } else {
-                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    let (i, ch) = *it.peek()
+                        .expect("unreachable; while condition asserts is_some()");
                     return Err(Error {
                         position: i,
                         kind: InvalidLetter(ch),
@@ -217,7 +224,7 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                     initial: initial,
                     vowel: code,
                 };
-            },
+            }
             AfterVowel { initial, vowel } => {
                 // Read consonant (or the beginning of next block)
                 // We clone the iterator so that read_vowel does not advance `it`.
@@ -238,11 +245,13 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                 } else if let Ok(code) = read_vowel(&mut copy) {
                     it = copy;
                     push_block(output, initial, vowel, None, None);
-                    state = AfterVowel { 
-                        initial: CONSONANT_IEUNG, vowel: code,
+                    state = AfterVowel {
+                        initial: CONSONANT_IEUNG,
+                        vowel: code,
                     };
                 } else {
-                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    let (i, ch) = *it.peek()
+                        .expect("unreachable; while condition asserts is_some()");
                     return Err(Error {
                         position: i,
                         kind: InvalidLetter(ch),
@@ -256,14 +265,14 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                 if let Ok(code) = read_consonant(&mut copy) {
                     // Commit the consumed characters.
                     it = copy;
-                    // let mapped = *FINAL_MAP.get(&first_final)
-                    //                        .expect("invariant broken; first_final must be in \
-                    //                                 FINAL_MAP");
+                    let mapped = *FINAL_MAP.get(&first_final)
+                        .expect("invariant broken; first_final must be in FINAL_MAP");
                     // Can anything follow the other final?
 
-                    let can_follow = FINAL_COMBINATION_MAP.get(&first_final)
-                                                          .and_then(|map| map.get(&code))
-                                                          .is_some();
+                    let can_follow = FINAL_COMBINATION_MAP.get(&mapped)
+                        .and_then(|map| map.get(&code))
+                        .is_some();
+                    // println!("Can code {} follow {}: {}", code, first_final, can_follow);
                     state = if can_follow {
                         AfterSecondFinal {
                             initial: initial,
@@ -279,10 +288,12 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                     it = copy;
                     push_block(output, initial, vowel, None, None);
                     state = AfterVowel {
-                        initial: first_final, vowel: code
+                        initial: first_final,
+                        vowel: code,
                     };
                 } else {
-                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    let (i, ch) = *it.peek()
+                        .expect("unreachable; while condition asserts is_some()");
                     return Err(Error {
                         position: i,
                         kind: InvalidLetter(ch),
@@ -305,9 +316,13 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                 } else if let Ok(code) = read_vowel(&mut copy) {
                     it = copy;
                     push_block(output, initial, vowel, Some(first_final), None);
-                    state = AfterVowel { initial: second_final, vowel: code };
+                    state = AfterVowel {
+                        initial: second_final,
+                        vowel: code,
+                    };
                 } else {
-                    let (i, ch) = *it.peek().expect("unreachable; while condition asserts is_some()");
+                    let (i, ch) = *it.peek()
+                        .expect("unreachable; while condition asserts is_some()");
                     return Err(Error {
                         position: i,
                         kind: InvalidLetter(ch),
@@ -316,6 +331,8 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
             }
         }
     }
+
+    // println!("Final state: {:?}", state);
 
     match state {
         AfterInitial { .. } => {
@@ -345,4 +362,65 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
 pub fn deromanize(text: &str) -> Result<String, Error> {
     let mut output = String::new();
     deromanize_into(text, &mut output).map(|_| output)
+}
+
+pub fn deromanize_lossy(text: &str) -> Result<String, Error> {
+    let mut output = String::new();
+    let mut start = 0;
+    let mut escaped = false;
+    let mut valid_part = true;
+    const ESCAPE_START: char = '[';
+    const ESCAPE_END: char = ']';
+    for (i, ch) in text.char_indices() {
+        if escaped {
+            if ch == ESCAPE_END {
+                escaped = false;
+                output.push_str(&text[start..i]);
+                start = i + 1;
+            }
+        } else {
+            if ch == ESCAPE_START {
+                if start != i {
+                    let part = &text[start..i];
+                    if valid_part {
+                        try!(deromanize_into(part, &mut output)
+                            .map_err(|e| e.offset(start as isize)));
+                    } else {
+                        output.push_str(part);
+                    }
+                }
+                escaped = true;
+                valid_part = true;
+                start = i + 1;
+            } else if valid_part {
+                if !VALID_LETTERS.contains(&ch) {
+                    if start != i {
+                        let part = &text[start..i];
+                        try!(deromanize_into(part, &mut output)
+                            .map_err(|e| e.offset(start as isize)));
+                    }
+                    valid_part = false;
+                    start = i;
+                }
+            } else {
+                if VALID_LETTERS.contains(&ch) {
+                    if start != i {
+                        let part = &text[start..i];
+                        output.push_str(part);
+                    }
+                    valid_part = true;
+                    start = i;
+                }
+            }
+        }
+    }
+    if start < text.len() {
+        let part = &text[start..];
+        if escaped || (!valid_part) {
+            output.push_str(part);
+        } else {
+            try!(deromanize_into(part, &mut output).map_err(|e| e.offset(start as isize)));
+        }
+    }
+    Ok(output)
 }

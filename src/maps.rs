@@ -123,3 +123,35 @@ pub const CONSONANTS: phf::Map<char, PhfTrie<Option<u32>>> = phf_map! {
     'p' => Leaf(Some(17)), // ㅍ
     'h' => Leaf(Some(18)), // ㅎ
 };
+
+pub const VALID_LETTERS: phf::Set<char> = phf_set! {
+    'g',
+    'G',
+    'n',
+    'd',
+    'D',
+    'r',
+    'l',
+    'm',
+    'b',
+    'B',
+    's',
+    'S',
+    'x',
+    'j',
+    'J',
+    'c',
+    'k',
+    't',
+    'p',
+    'h',
+    
+    'a',
+    'e',
+    'i',
+    'o',
+    'u',
+    'w',
+    'y'
+};
+
