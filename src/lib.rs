@@ -196,7 +196,7 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
     let mut it = text.char_indices().peekable();
 
     while it.peek().is_some() {
-        // println!("State: {:?}", state);
+        //println!("State: {:?}", state);
         match state {
             Initial => {
                 let mut copy = it.clone();
@@ -264,6 +264,7 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
                 let mut copy = it.clone();
                 if let Ok(code) = read_consonant(&mut copy) {
                     // Commit the consumed characters.
+                    //println!("Read {} after the first final", code);
                     it = copy;
                     let mapped = *FINAL_MAP.get(&first_final)
                         .expect("invariant broken; first_final must be in FINAL_MAP");

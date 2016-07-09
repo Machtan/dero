@@ -44,7 +44,7 @@ pub const FINAL_COMBINATION_MAP: phf::Map<u32, phf::Map<u32, u32>> = phf_map! {
         12u32 => 1, // ㄴㅈ
         18u32 => 2, // ㄴㅎ
     },
-    5u32 => phf_map! {
+    8u32 => phf_map! {
         0u32 => 1, // ㄹㄱ
         6u32 => 2, // ㄹㅁ
         7u32 => 3, // ㄹㅂ
@@ -53,7 +53,7 @@ pub const FINAL_COMBINATION_MAP: phf::Map<u32, phf::Map<u32, u32>> = phf_map! {
         17u32 => 6, // ㄹㅍ
         18u32 => 7, // ㄹㅎ
     },
-    7u32 => phf_map! {
+    17u32 => phf_map! {
         9u32 => 1, // ㅂㅅ
     }
 };
