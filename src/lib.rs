@@ -31,27 +31,6 @@
 //!   
 //!   Ex: "rexonSi" => "레온씨"
 
-
-
-/*    // 10, // ㄹㅁ
-    // 11, // ㄹㅂ
-    // 12, // ㄹㅅ
-    // 13, // ㄹㅌ
-    // 14, // ㄹㅍ
-    // 15, // ㄹㅎ
-    6u32 => 16, // ㅁ
-    7u32 => 17, // ㅂ
-    // 18, // ㅂㅅ
-    9u32 => 19, // ㅅ
-    10u32 => 20, // ㅆ
-    11u32 => 21, // ㅇ
-    12u32 => 22, // ㅈ
-    14u32 => 23, // ㅊ
-    15u32 => 24, // ㅋ
-    16u32 => 25, // ㅌ
-    17u32 => 26, // ㅍ
-    18u32 => 27, // ㅎ*/
-
 extern crate phf;
 
 mod maps;
@@ -421,14 +400,21 @@ pub fn convert_strict(text: &str) -> Result<String, Error> {
     convert_strict_into(text, &mut output).map(|_| output)
 }
 
-/// Transforms any valid romaja sequences in the given text into its hangeul 
+/// Converts any valid romaja sequences in the given text into its hangeul 
 /// equivalent.
-/// Parts of the text can be escaped using brackets [], so that other text can
-/// be included as well
+///
+/// Parts of the text can be escaped using brackets [], so that text using the
+/// characters used for romanization can be included as well, without being
+/// mistaken for an invalid sequence.
+/// 
+/// Any character not used for romanization will be ignored.
 ///
 /// ```
 /// let text = dero::convert("annyeox haseyo, [Jakob]Si").unwrap();
 /// assert_eq!(text, "안녕 하세요, Jakob씨");
+/// 
+/// let mostly_unused = dero::convert("ANNYEOX HA[S]EYO").unwrap(); // S is used for ㅆ
+/// assert_eq!(mostly_unused, "ANNYEOX HASEYO");
 /// ```
 pub fn convert(text: &str) -> Result<String, Error> {
     let mut output = String::new();
