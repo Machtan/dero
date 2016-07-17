@@ -6,41 +6,10 @@ extern crate dero;
 extern crate phf;
 
 use std::env;
-use std::fmt;
 use std::io::{self, Write};
 use std::process::{self, Command, Stdio};
 
 use argonaut::{Parse, ArgDef};
-
-struct FmtDeroError(dero::Error);
-
-impl fmt::Display for FmtDeroError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use dero::ErrorKind::*;
-
-        match self.0.kind {
-            InvalidConsonant(letter) => {
-                write!(f,
-                       "Expected a valid consonant at position {}, found {:?}",
-                       self.0.position + 1,
-                       letter)
-            }
-            InvalidVowel(letter) => {
-                write!(f,
-                       "Expected a valid vowel at position {}, found {:?}",
-                       self.0.position + 1,
-                       letter)
-            }
-            InvalidLetter(letter) => {
-                write!(f,
-                       "Expected a valid consonant or vowel at position {}, found {:?}",
-                       self.0.position + 1,
-                       letter)
-            }
-            MissingFinalVowel => write!(f, "Expected a vowel at position {}", self.0.position + 1),
-        }
-    }
-}
 
 #[cfg(target_os = "macos")]
 fn copy_to_clipboard(text: &str) {
@@ -74,19 +43,8 @@ fn copy_to_clipboard(text: &str) {}
 #[cfg(not(target_os = "macos"))]
 fn look_up_word(text: &str) {}
 
-fn print_error(error: dero::Error, text: &str) -> io::Result<()> {
-    let num_chars = text[..error.position].chars().count() + 1;
-    // Output right-aligned '^' padded with '~' to the length given by argument 3.
-    let msg = format!("{}\n{}\n{:~>3$}\n",
-                      FmtDeroError(error),
-                      text.trim_right(),
-                      '^',
-                      num_chars);
-    io::stderr().write_all(msg.as_bytes())
-}
-
 fn deromanize_single(text: &str, copy: bool, look_up: bool) -> bool {
-    match dero::deromanize_lossy(text) {
+    match dero::deromanize(text) {
         Ok(output) => {
             println!("{}", &output);
             if copy {
@@ -98,7 +56,7 @@ fn deromanize_single(text: &str, copy: bool, look_up: bool) -> bool {
             true
         }
         Err(error) => {
-            print_error(error, text).expect("Could not print error");
+            error.print_explanation(text).expect("Could not print error");
             false
         }
     }
@@ -118,7 +76,7 @@ fn start_interactive(copy: bool, look_up: bool) {
             println!("");
             return;
         }
-        match dero::deromanize_lossy(&input) {
+        match dero::deromanize(&input) {
             Ok(output) => {
                 let trimmed = output.trim_right();
                 if copy {
@@ -130,7 +88,7 @@ fn start_interactive(copy: bool, look_up: bool) {
                 println!("=> {}", trimmed);
             }
             Err(error) => {
-                print_error(error, &input).expect("Could not print error");
+                error.print_explanation(&input).expect("Could not print error");
             }
         }
     }

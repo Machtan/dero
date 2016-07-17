@@ -5,6 +5,8 @@ extern crate phf;
 
 mod maps;
 
+use std::io;
+use std::io::Write;
 use std::char;
 use std::iter::Peekable;
 use maps::{PhfTrie, CONSONANTS, VOWELS, FINAL_MAP, FINAL_COMBINATION_MAP, VALID_LETTERS};
@@ -14,6 +16,7 @@ const FINAL_COUNT: u32 = 28;
 const ITEMS_PER_INITIAL: u32 = 588;
 const CONSONANT_IEUNG: u32 = 11;
 
+/// An error given when a part of a romaja sequence is invalid.
 #[derive(Debug, Copy, Clone)]
 pub struct Error {
     pub position: usize,
@@ -21,14 +24,50 @@ pub struct Error {
 }
 
 impl Error {
+    /// Offsets the error position by the given amount.
     pub fn offset(self, offset: isize) -> Error {
         Error {
             position: ((self.position as isize) + offset) as usize,
             kind: self.kind,
         }
     }
+    
+    /// Prints an explanation for this error message to stderr.
+    pub fn print_explanation(&self, text: &str) -> io::Result<()> {
+        use self::ErrorKind::*;
+        let num_chars = text[..self.position].chars().count() + 1;
+        // Output right-aligned '^' padded with '~' to the length given by argument 3.
+        let explanation = match self.kind {
+            InvalidConsonant(letter) => {
+                format!(
+                       "Expected a valid consonant at position {}, found {:?}",
+                       self.position + 1,
+                       letter)
+            }
+            InvalidVowel(letter) => {
+                format!(
+                       "Expected a valid vowel at position {}, found {:?}",
+                       self.position + 1,
+                       letter)
+            }
+            InvalidLetter(letter) => {
+                format!(
+                       "Expected a valid consonant or vowel at position {}, found {:?}",
+                       self.position + 1,
+                       letter)
+            }
+            MissingFinalVowel => format!("Expected a vowel at position {}", self.position + 1),
+        };
+        let msg = format!("{}\n{}\n{:~>3$}\n",
+                          explanation,
+                          text.trim_right(),
+                          '^',
+                          num_chars);
+        io::stderr().write_all(msg.as_bytes())
+    }
 }
 
+/// Which kind of error was found.
 #[derive(Debug, Copy, Clone)]
 pub enum ErrorKind {
     InvalidConsonant(char),
@@ -129,42 +168,6 @@ fn push_block(text: &mut String,
     text.push(char::from_u32(value).expect("Invalid UTF-8 value created from block"));
 }
 
-pub fn deromanize_words_into<F>(text: &str,
-                                mut is_boundary: F,
-                                output: &mut String)
-                                -> Result<(), Error>
-    where F: FnMut(char) -> bool
-{
-    let it = text.char_indices();
-    let mut start = None;
-
-    for (i, ch) in it {
-        if is_boundary(ch) {
-            if let Some(start) = start {
-                let part = &text[start..i];
-                try!(deromanize_into(part, output).map_err(|e| e.offset(start as isize)));
-            }
-            output.push(ch);
-            start = None;
-        } else if start.is_none() {
-            start = Some(i);
-        }
-    }
-    if let Some(start) = start {
-        let part = &text[start..];
-        try!(deromanize_into(part, output).map_err(|e| e.offset(start as isize)));
-    }
-
-    Ok(())
-}
-
-pub fn deromanize_words<F>(text: &str, is_boundary: F) -> Result<String, Error>
-    where F: FnMut(char) -> bool
-{
-    let mut output = String::new();
-    deromanize_words_into(text, is_boundary, &mut output).map(|_| output)
-}
-
 #[derive(Debug)]
 enum DeroState {
     Initial,
@@ -188,7 +191,8 @@ enum DeroState {
     },
 }
 
-pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
+/// Deromanizes a string of VALID romaja characters into a hangeul string.
+pub fn deromanize_strict_into(text: &str, output: &mut String) -> Result<(), Error> {
     use self::ErrorKind::*;
     use self::DeroState::*;
 
@@ -360,12 +364,22 @@ pub fn deromanize_into(text: &str, output: &mut String) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn deromanize(text: &str) -> Result<String, Error> {
+/// Deromanizes a string of VALID romaja characters into a hangeul string.
+pub fn deromanize_strict(text: &str) -> Result<String, Error> {
     let mut output = String::new();
-    deromanize_into(text, &mut output).map(|_| output)
+    deromanize_strict_into(text, &mut output).map(|_| output)
 }
 
-pub fn deromanize_lossy(text: &str) -> Result<String, Error> {
+/// Transforms any valid romaja sequences in the given text into its hangeul 
+/// equivalent.
+/// Parts of the text can be escaped using brackets [], so that other text can
+/// be included as well
+///
+/// ```
+/// let text = dero::deromanize("annyeox haseyo, [Jakob]Si").unwrap();
+/// assert_eq!(text, "안녕 하세요, Jakob씨");
+/// ```
+pub fn deromanize(text: &str) -> Result<String, Error> {
     let mut output = String::new();
     let mut start = 0;
     let mut escaped = false;
@@ -384,7 +398,7 @@ pub fn deromanize_lossy(text: &str) -> Result<String, Error> {
                 if start != i {
                     let part = &text[start..i];
                     if valid_part {
-                        try!(deromanize_into(part, &mut output)
+                        try!(deromanize_strict_into(part, &mut output)
                             .map_err(|e| e.offset(start as isize)));
                     } else {
                         output.push_str(part);
@@ -397,7 +411,7 @@ pub fn deromanize_lossy(text: &str) -> Result<String, Error> {
                 if !VALID_LETTERS.contains(&ch) {
                     if start != i {
                         let part = &text[start..i];
-                        try!(deromanize_into(part, &mut output)
+                        try!(deromanize_strict_into(part, &mut output)
                             .map_err(|e| e.offset(start as isize)));
                     }
                     valid_part = false;
@@ -420,7 +434,7 @@ pub fn deromanize_lossy(text: &str) -> Result<String, Error> {
         if escaped || (!valid_part) {
             output.push_str(part);
         } else {
-            try!(deromanize_into(part, &mut output).map_err(|e| e.offset(start as isize)));
+            try!(deromanize_strict_into(part, &mut output).map_err(|e| e.offset(start as isize)));
         }
     }
     Ok(output)
