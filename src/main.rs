@@ -43,8 +43,8 @@ fn copy_to_clipboard(text: &str) {}
 #[cfg(not(target_os = "macos"))]
 fn look_up_word(text: &str) {}
 
-fn deromanize_single(text: &str, copy: bool, look_up: bool) -> bool {
-    match dero::deromanize(text) {
+fn convert_single(text: &str, copy: bool, look_up: bool) -> bool {
+    match dero::convert(text) {
         Ok(output) => {
             println!("{}", &output);
             if copy {
@@ -76,7 +76,7 @@ fn start_interactive(copy: bool, look_up: bool) {
             println!("");
             return;
         }
-        match dero::deromanize(&input) {
+        match dero::convert(&input) {
             Ok(output) => {
                 let trimmed = output.trim_right();
                 if copy {
@@ -156,7 +156,7 @@ fn main() {
     }
 
     for part in parts {
-        if deromanize_single(part, copy_text, look_up) != true {
+        if convert_single(part, copy_text, look_up) != true {
             process::exit(1);
         }
     }

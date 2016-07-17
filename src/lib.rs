@@ -1,5 +1,56 @@
 #![feature(plugin)]
 #![plugin(phf_macros)]
+//! # Conversion format
+//! The following are the conversion rules for the 'romaja' understood by this
+//! library.
+//! 
+//! The format is a mix of the revised romanization and my understanding of the
+//! pronunciation of the characters.
+//! 
+//! # Consonants
+//! | Sequence  | g | G | n | d | D | r / l | m | b | B | s | S | x | j | J | ch | k | t | p | h |
+//! |-----------|---|---|---|---|---|-------|---|---|---|---|---|---|---|---|----|---|---|---|---|
+//! | Consonant | ㄱ | ㄲ | ㄴ | ㄷ | ㄸ | ㄹ   | ㅁ | ㅂ | ㅃ | ㅅ | ㅆ | ㅇ | ㅈ | ㅉ | ㅊ | ㅋ | ㅌ | ㅍ | ㅎ |
+//!
+//! # Vowels
+//! | Sequence  | a | eo | o | u | y | i | ae | e | ya | yeo | yo | yu | yae | ye | wa | wae | weo | we | oe | wi | yi |
+//! |-----------|---|----|---|---|---|---|----|---|----|-----|----|----|-----|----|----|-----|-----|----|----|----|----|
+//! | Vowel     | ㅏ | ㅓ | ㅗ | ㅜ | ㅡ | ㅣ | ㅐ | ㅔ | ㅑ | ㅕ | ㅛ  | ㅠ  | ㅒ  | ㅖ  | ㅘ  | ㅙ  | ㅝ   | ㅞ | ㅚ  | ㅟ  | ㅢ |
+//!
+//! # Rules
+//! Aside from those conversions, the following rules hold:
+//!
+//! - Initial vowels do not need an explicit ieung ('x')
+//!   
+//!   Ex: "arayo" => "아라요"
+//! - A vowel following a vowel does not need explicit ieungs either
+//!   
+//!   Ex: "igeo mweoyeyo?" => 이거 뭐예요?
+//! - As a note to the former: As "eo" => 어, ieung can still be used to 
+//!   separate those:
+//!   
+//!   Ex: "rexonSi" => "레온씨"
+
+
+
+/*    // 10, // ㄹㅁ
+    // 11, // ㄹㅂ
+    // 12, // ㄹㅅ
+    // 13, // ㄹㅌ
+    // 14, // ㄹㅍ
+    // 15, // ㄹㅎ
+    6u32 => 16, // ㅁ
+    7u32 => 17, // ㅂ
+    // 18, // ㅂㅅ
+    9u32 => 19, // ㅅ
+    10u32 => 20, // ㅆ
+    11u32 => 21, // ㅇ
+    12u32 => 22, // ㅈ
+    14u32 => 23, // ㅊ
+    15u32 => 24, // ㅋ
+    16u32 => 25, // ㅌ
+    17u32 => 26, // ㅍ
+    18u32 => 27, // ㅎ*/
 
 extern crate phf;
 
@@ -191,8 +242,8 @@ enum DeroState {
     },
 }
 
-/// Deromanizes a string of VALID romaja characters into a hangeul string.
-pub fn deromanize_strict_into(text: &str, output: &mut String) -> Result<(), Error> {
+/// Converts a string of VALID romaja characters into a hangeul string.
+pub fn convert_strict_into(text: &str, output: &mut String) -> Result<(), Error> {
     use self::ErrorKind::*;
     use self::DeroState::*;
 
@@ -364,10 +415,10 @@ pub fn deromanize_strict_into(text: &str, output: &mut String) -> Result<(), Err
     Ok(())
 }
 
-/// Deromanizes a string of VALID romaja characters into a hangeul string.
-pub fn deromanize_strict(text: &str) -> Result<String, Error> {
+/// Converts a string of VALID romaja characters into a hangeul string.
+pub fn convert_strict(text: &str) -> Result<String, Error> {
     let mut output = String::new();
-    deromanize_strict_into(text, &mut output).map(|_| output)
+    convert_strict_into(text, &mut output).map(|_| output)
 }
 
 /// Transforms any valid romaja sequences in the given text into its hangeul 
@@ -376,10 +427,10 @@ pub fn deromanize_strict(text: &str) -> Result<String, Error> {
 /// be included as well
 ///
 /// ```
-/// let text = dero::deromanize("annyeox haseyo, [Jakob]Si").unwrap();
+/// let text = dero::convert("annyeox haseyo, [Jakob]Si").unwrap();
 /// assert_eq!(text, "안녕 하세요, Jakob씨");
 /// ```
-pub fn deromanize(text: &str) -> Result<String, Error> {
+pub fn convert(text: &str) -> Result<String, Error> {
     let mut output = String::new();
     let mut start = 0;
     let mut escaped = false;
@@ -398,7 +449,7 @@ pub fn deromanize(text: &str) -> Result<String, Error> {
                 if start != i {
                     let part = &text[start..i];
                     if valid_part {
-                        try!(deromanize_strict_into(part, &mut output)
+                        try!(convert_strict_into(part, &mut output)
                             .map_err(|e| e.offset(start as isize)));
                     } else {
                         output.push_str(part);
@@ -411,7 +462,7 @@ pub fn deromanize(text: &str) -> Result<String, Error> {
                 if !VALID_LETTERS.contains(&ch) {
                     if start != i {
                         let part = &text[start..i];
-                        try!(deromanize_strict_into(part, &mut output)
+                        try!(convert_strict_into(part, &mut output)
                             .map_err(|e| e.offset(start as isize)));
                     }
                     valid_part = false;
@@ -434,7 +485,7 @@ pub fn deromanize(text: &str) -> Result<String, Error> {
         if escaped || (!valid_part) {
             output.push_str(part);
         } else {
-            try!(deromanize_strict_into(part, &mut output).map_err(|e| e.offset(start as isize)));
+            try!(convert_strict_into(part, &mut output).map_err(|e| e.offset(start as isize)));
         }
     }
     Ok(output)
