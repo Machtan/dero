@@ -9,5 +9,4 @@ name = "dero"
 
 [dependencies]
 argonaut = "0.11.0"
-phf = "0.7.19"
-phf_macros = "0.7.19"
+hangeul2 = { path = "../hangeul2" }
