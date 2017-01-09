@@ -1,326 +1,146 @@
-extern crate hangeul2;
+extern crate argonaut;
+extern crate dero;
 
-use hangeul2::{Initial, Vowel, Final, Block};
+use std::env;
+use std::io::{self, Write};
+use std::process::{self, Command, Stdio};
 
+use argonaut::{Parse, ArgDef};
 
-#[derive(Debug)]
-enum DeroState {
-    Empty,
-    AfterInitial(Initial),
-    AfterVowel(Initial, Vowel),
-    AfterFinal(Initial, Vowel, Final),
-}
-
-/// Returns a vowel and the number of chars read.
-/// This also corresponds to bytes, as the characters must be ASCII chars.
-pub fn read_vowel(text: &str) -> Option<(Vowel, usize)> {
-    use hangeul2::Vowel::*;
-    let mut chars = text.chars();
-    match chars.next() {
-        Some('i') => Some((I, 1)),
-        Some('a') => match chars.next() {
-            Some('e') => Some((Ae, 2)),
-            _ => Some((A, 1)),
-        },
-        Some('e') => match chars.next() {
-            Some('o') => Some((Eo, 2)),
-            _ => Some((E, 1)),
-        },
-        Some('o') => match chars.next() {
-            Some('e') => Some((Oe, 2)),
-            _ => Some((O, 1)),
-        },
-        Some('u') => Some((U, 1)),
-        Some('y') => match chars.next() {
-            Some('a') => match chars.next() {
-                Some('e') => Some((Yae, 3)),
-                _ => Some((Ya, 2)),
-            },
-            Some('e') => match chars.next() {
-                Some('o') => Some((Yeo, 3)),
-                _ => Some((Ye, 2)),
-            },
-            Some('o') => Some((Yo, 2)),
-            Some('u') => Some((Yu, 2)),
-            Some('i') => Some((Yi, 2)),
-            _ => Some((Y, 1)),
-        },
-        Some('w') => match chars.next() {
-            Some('a') => match chars.next() {
-                Some('e') => Some((Wae, 3)),
-                _ => Some((Wa, 2)),
-            },
-            Some('e') => match chars.next() {
-                Some('o') => Some((Weo, 3)),
-                _ => Some((We, 2)),
-            },
-            Some('i') => Some((Wi, 2)),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-pub fn read_initial(text: &str) -> Option<(Initial, usize)> {
-    use hangeul2::Initial::*;
-    let mut chars = text.chars();
-    match chars.next() {
-        Some('g') => Some((G, 1)),
-        Some('G') => Some((Gg, 1)),
-        Some('n') => Some((N, 1)),
-        Some('d') => Some((D, 1)),
-        Some('D') => Some((Dd, 1)),
-        Some('r') => Some((R, 1)),
-        Some('l') => Some((R, 1)),
-        Some('m') => Some((M, 1)),
-        Some('b') => Some((B, 1)),
-        Some('B') => Some((Bb, 1)),
-        Some('s') => Some((S, 1)),
-        Some('S') => Some((Ss, 1)),
-        Some('x') => Some((Ieung, 1)),
-        Some('j') => Some((J, 1)),
-        Some('J') => Some((Jj, 1)),
-        Some('c') => match chars.next() {
-            Some('h') => Some((Ch, 2)),
-            _ => None
-        },
-        Some('k') => Some((K, 1)),
-        Some('t') => Some((T, 1)),
-        Some('p') => Some((P, 1)),
-        Some('h') => Some((H, 1)),
-        _ => None,
-    }
-}
-
-pub fn read_final(mut text: &str) -> Option<(Final, usize)> {
-    use hangeul2::Initial::*;
-    let (first, flen) = if let Some((ini, len)) = read_initial(text) {
-        text = &text[len..];
-        (ini, len)
+#[cfg(target_os = "macos")]
+fn copy_to_clipboard(text: &str) {
+    // println!("Copying '{}' to the clipboard...", text);
+    let mut child = Command::new("/usr/bin/pbcopy")
+        .arg(text)
+        .stdin(Stdio::piped())
+        .spawn()
+        .expect("Could not run pbcopy");
+    if let Some(ref mut stdin) = child.stdin {
+        stdin.write_all(text.as_bytes())
+            .expect("Could not write to pbcopy");
     } else {
-        return None;
-    };
-    let mut chars = text.chars();
-    let (fin, len) = match (first, chars.next()) {
-        (G, Some('s')) => (Final::Gs, 1),
-        (G, _) => (Final::G, 0),
-        (Gg, _) => (Final::Gg, 0),
-        (N, Some('j')) => (Final::Nj, 1),
-        (N, Some('h')) => (Final::Nh, 1),
-        (N, _) => (Final::N, 0),
-        (D, _) => (Final::D, 0),
-        (Dd, _) => return None,
-        (R, Some('g')) => (Final::Lg, 1),
-        (R, Some('m')) => (Final::Lm, 1),
-        (R, Some('b')) => (Final::Lb, 1),
-        (R, Some('s')) => (Final::Ls, 1),
-        (R, Some('t')) => (Final::Lt, 1),
-        (R, Some('p')) => (Final::Lp, 1),
-        (R, Some('h')) => (Final::Lh, 1),
-        (R, _) => (Final::L, 0),
-        (M, _) => (Final::M, 0),
-        (B, Some('s')) => (Final::Bs, 1),
-        (B, _) => (Final::B, 0),
-        (Bb, _) => return None,
-        (S, _) => (Final::S, 0),
-        (Ss, _) => (Final::Ss, 0),
-        (Ieung, _) => (Final::Ieung, 0),
-        (J, _) => (Final::J, 0),
-        (Jj, _) => return None,
-        (Ch, _) => (Final::Ch, 0),
-        (K, _) => (Final::K, 0),
-        (T, _) => (Final::T, 0),
-        (P, _) => (Final::P, 0),
-        (H, _) => (Final::H, 0),
-    };
-    Some((fin, flen + len))
+        unreachable!();
+    }
+    child.wait().expect("Error while running pbcopy");
 }
 
-#[inline]
-fn skip<I>(iter: &mut I, n: usize) where I: Iterator {
-    for _ in 0..n {
-        iter.next();
+#[cfg(target_os = "macos")]
+fn look_up_word(text: &str) {
+    let url = format!("dict://{}", &text);
+    Command::new("open")
+        .arg(&url)
+        .status()
+        .expect("Could not open dictionary app");
+}
+
+#[cfg(not(target_os = "macos"))]
+fn copy_to_clipboard(text: &str) {}
+
+#[cfg(not(target_os = "macos"))]
+fn look_up_word(text: &str) {}
+
+fn convert_single(text: &str, copy: bool, look_up: bool) -> bool {
+    let output = dero::deromanize_escaped(text);
+    println!("{}", &output);
+    if copy {
+        copy_to_clipboard(&output);
+    }
+    if look_up {
+        look_up_word(&output);
+    }
+    true
+}
+
+fn start_interactive(copy: bool, look_up: bool) {
+    println!("Welcome to the deromanization tool.");
+    println!("Write romaja to convert it to 한글.");
+    println!("( Press Ctrl + C to quit )");
+    let mut input = String::new();
+    loop {
+        input.clear();
+        print!("> ");
+        io::stdout().flush().expect("Could not flush stdout");
+        if io::stdin().read_line(&mut input).expect("Could not read from stdin") == 0 {
+            // End of file reached.
+            println!("");
+            return;
+        }
+        let output = dero::deromanize_escaped(&input);
+        let trimmed = output.trim_right();
+        if copy {
+            copy_to_clipboard(trimmed);
+        }
+        if look_up {
+            look_up_word(trimmed);
+        }
+        println!("=> {}", trimmed);
     }
 }
 
-pub fn deromanize(text: &str) -> String {
-    let mut s = String::new();
-    deromanize_into(text, &mut s);
-    s
-}
+const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
 
-pub fn deromanize_into(text: &str, s: &mut String) {
-    use self::DeroState::*;
-    let mut state = Empty;
-    let mut chars = text.char_indices().peekable();
-    while let Some(&(i, ch)) = chars.peek() {
-        let rem = &text[i..];
-        //println!("State: {:?}", state);
-        state = match state {
-            Empty => {
-                if let Some((ini, len)) = read_initial(rem) {
-                    skip(&mut chars, len);
-                    AfterInitial(ini)
-                } else if let Some((vow, len)) = read_vowel(rem) {
-                    skip(&mut chars, len);
-                    AfterVowel(Initial::Ieung, vow)
-                } else {
-                    s.push(ch);
-                    chars.next();
-                    Empty
-                }
+const HELP: &'static str = r#"Optional arguments:
+  --look-up | -l TEXT   Deromanize TEXT and look up the result in the OS X
+                        dictionary.
+  --version             Show the version of dero.
+  --help | -h           Show this help message.
+  --no-copy             Do not copy the results to clipboard."#;
+
+fn main() {
+    use argonaut::Arg::*;
+
+    let a_text_parts = ArgDef::optional_trail();
+    let a_lookup = ArgDef::named_and_short("look-up", 'l').switch();
+    let a_no_copy = ArgDef::named("no-copy").switch();
+    let a_version = ArgDef::named("version").switch();
+    let a_help = ArgDef::named_and_short("help", 'h').switch();
+    let expected = &[a_text_parts, a_lookup, a_version, a_help, a_no_copy];
+
+    let args: Vec<_> = env::args().skip(1).collect();
+    let parse = Parse::new(expected, &args).expect("Invalid definitions");
+
+    let mut parts = Vec::new();
+    let mut copy_text = true;
+    let mut look_up = false;
+
+    for item in parse {
+        match item {
+            Err(err) => {
+                // TODO: Do not use Debug print of the error.
+                let msg = format!("Parse error: {:?}\n{}\n{}\n",
+                                  err,
+                                  USAGE,
+                                  "Try --help for more information.");
+                io::stderr().write(msg.as_bytes()).expect("Could not print error");
+                process::exit(2);
             }
-            AfterInitial(ini) => {
-                if let Some((nvow, len)) = read_vowel(rem) {
-                    skip(&mut chars, len);
-                    AfterVowel(ini, nvow)
-                } else {
-                    s.push(ini.as_char());
-                    Empty
-                }
+            Ok(TrailPart(value)) => {
+                parts.push(value);
             }
-            AfterVowel(ini, vow) => {
-                if let Some((nfin, len)) = read_final(rem) {
-                    skip(&mut chars, len);
-                    AfterFinal(ini, vow, nfin)
-                } else if let Some((nvow, len)) = read_vowel(rem) {
-                    skip(&mut chars, len);
-                    s.push(Block::from_parts(ini, vow, Final::Empty).combine());
-                    AfterVowel(Initial::Ieung, nvow)
-                // Consonants invalid in final position, ie: Bb
-                } else if let Some((nini, len)) = read_initial(rem) {
-                    skip(&mut chars, len);
-                    s.push(Block::from_parts(ini, vow, Final::Empty).combine());
-                    AfterInitial(nini)
-                } else {
-                    s.push(Block::from_parts(ini, vow, Final::Empty).combine());
-                    s.push(ch);
-                    chars.next();
-                    Empty
-                }
+            Ok(Switch("look-up")) => look_up = true,
+            Ok(Switch("no-copy")) => {
+                copy_text = false;
             }
-            AfterFinal(ini, vow, fin) => {
-                if let Some((nvow, len)) = read_vowel(rem) {
-                    use hangeul2::Final::*;
-                    skip(&mut chars, len);
-                    let (fin, nini) = match fin {
-                        G => (Empty, Initial::G),
-                        Gg => (Empty, Initial::Gg),
-                        Gs => (G, Initial::S),
-                        N => (Empty, Initial::N),
-                        Nj => (N, Initial::J),
-                        Nh => (N, Initial::H),
-                        D => (Empty, Initial::D),
-                        L => (Empty, Initial::R),
-                        Lg => (L, Initial::G),
-                        Lm => (L, Initial::M),
-                        Lb => (L, Initial::B),
-                        Ls => (L, Initial::S),
-                        Lt => (L, Initial::T),
-                        Lp => (L, Initial::P),
-                        Lh => (L, Initial::H),
-                        M => (Empty, Initial::M),
-                        B => (Empty, Initial::B),
-                        Bs => (B, Initial::S),
-                        S => (Empty, Initial::S),
-                        Ss => (Empty, Initial::Ss),
-                        Ieung => (Empty, Initial::Ieung),
-                        J => (Empty, Initial::J),
-                        Ch => (Empty, Initial::Ch),
-                        K => (Empty, Initial::K),
-                        T => (Empty, Initial::T),
-                        P => (Empty, Initial::P),
-                        H => (Empty, Initial::H),
-                        Empty => unreachable!(),
-                    };
-                    s.push(Block::from_parts(ini, vow, fin).combine());
-                    AfterVowel(nini, nvow)
-                } else {
-                    s.push(Block::from_parts(ini, vow, fin).combine());
-                    Empty
-                }
+            Ok(Switch("help")) => {
+                println!("{}\n\n{}", USAGE, HELP);
+                return;
             }
+            Ok(Switch("version")) => {
+                println!("dero {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            _ => unreachable!(),
         }
     }
-    match state {
-        Empty => {}
-        AfterInitial(ini) => s.push(ini.as_char()),
-        AfterVowel(ini, vow) => s.push(Block::from_parts(ini, vow, Final::Empty).combine()),
-        AfterFinal(ini, vow, fin) => s.push(Block::from_parts(ini, vow, fin).combine()),
-    }
-}
 
-pub fn deromanize_escaped(text: &str) -> String {
-    const ESCAPE_START: char = '[';
-    const ESCAPE_END: char = ']';
-    let mut s = String::new();
-    let mut i = 0;
-    while i < text.len() {
-        println!("i: {}", i);
-        let rem = &text[i..];
-        if let Some(start) = rem.find(ESCAPE_START) {
-            deromanize_into(&rem[..start], &mut s);
-            if let Some(end) = rem.find(ESCAPE_END) {
-                s.push_str(&rem[start + ESCAPE_START.len_utf8() .. end]);
-                i += end + ESCAPE_END.len_utf8();
-            } else {
-                s.push_str(&rem[start + ESCAPE_START.len_utf8() ..]);
-                break;
-            }
-        } else {
-            deromanize_into(rem, &mut s);
-            break;
+    if parts.is_empty() {
+        start_interactive(copy_text, look_up);
+        return;
+    }
+
+    for part in parts {
+        if convert_single(part, copy_text, look_up) != true {
+            process::exit(1);
         }
     }
-    s
-}
-
-pub fn main() {
-    println!("Hello Dero!");
-    let vowels = "a ya ae yae eo yeo e ye o wa wae oe yo u weo we wi yu y yi";
-    let initials = "g G n d D r l m b B s S x j J ch k p t h";
-    let finals = "g G gs n nj nh d l lg lm lb ls lt lp lh m b bs s S x j ch k t p h";
-    for vowtext in vowels.split_whitespace() {
-        let (vow, len) = read_vowel(vowtext).expect(&format!("Could not read vowel '{}'", vowtext));
-        println!("Vowel: '{}' => {:?} |{}|", vowtext, vow, len);
-        assert!(len == vowtext.len());
-    }
-    for initext in initials.split_whitespace() {
-        let (ini, len) = read_initial(initext).expect(&format!("Could not read initial '{}'", initext));
-        println!("Initial: '{}' => {:?} |{}|", initext, ini, len);
-        assert!(len == initext.len());
-    }
-    for fintext in finals.split_whitespace() {
-        let (fin, len) = read_final(fintext).expect(&format!("Could not read final '{}'", fintext));
-        println!("Final: '{}' => {:?} |{}|", fintext, fin, len);
-        assert!(len == fintext.len());
-    }
-    let derovow = deromanize(vowels);
-    println!("Vowels: {}", derovow);
-    let deroini = deromanize(initials);
-    println!("Initials: {}", deroini);
-    let examples = "manhda eobsxeoyo balgda masxiSxeoSxeoyo masyeoSxeoyo yeByn yeoja ijxeobeoryeoSxeoyo";
-    for ex in examples.split_whitespace() {
-        let dero = deromanize(ex);
-        println!("{} => {}", ex, dero);
-    }
-    // Error: mashyeoSxeoyo => 만현어요
-    // Error: masyeoSxeoyo => 마년어요
-    let syeo = Block::from_parts(Initial::S, Vowel::Yeo, Final::Ss).combine();
-    println!("Syeo: {}", syeo);
-    
-    let garbage = "astioeangpdurfw:qfujwpk:xlbcmv/2102398473925^9asheynttujfujt";
-    println!("Garbage: {}", deromanize(garbage));
-    // Error: p -> ㅌ
-    // Error: t -> ㅍ
-    let uj = Block::from_parts(Initial::Ieung, Vowel::U, Final::J).combine();
-    println!("Uj: {}", uj);
-    let uch = Block::from_parts(Initial::Ieung, Vowel::U, Final::Ch).combine();
-    println!("Uch: {}", uch);
-    
-    let escaped = deromanize_escaped("annyeoxhaseyo, [Jakob]Si!");
-    println!("Escaped: {}", escaped);
-    
-    let escaped_garbage = "qdp:[rwufa]eonbcmev/[arp]dft[]sa[][][[nhon]]etydrnt";
-    println!("Escaped garbage: {}", deromanize_escaped(escaped_garbage));
 }
