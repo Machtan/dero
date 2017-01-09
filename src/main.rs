@@ -144,8 +144,13 @@ fn skip<I>(iter: &mut I, n: usize) where I: Iterator {
 }
 
 pub fn deromanize(text: &str) -> String {
-    use self::DeroState::*;
     let mut s = String::new();
+    deromanize_into(text, &mut s);
+    s
+}
+
+pub fn deromanize_into(text: &str, s: &mut String) {
+    use self::DeroState::*;
     let mut state = Empty;
     let mut chars = text.char_indices().peekable();
     while let Some(&(i, ch)) = chars.peek() {
@@ -243,10 +248,32 @@ pub fn deromanize(text: &str) -> String {
         AfterVowel(ini, vow) => s.push(Block::from_parts(ini, vow, Final::Empty).combine()),
         AfterFinal(ini, vow, fin) => s.push(Block::from_parts(ini, vow, fin).combine()),
     }
-    s
 }
 
-
+pub fn deromanize_escaped(text: &str) -> String {
+    const ESCAPE_START: char = '[';
+    const ESCAPE_END: char = ']';
+    let mut s = String::new();
+    let mut i = 0;
+    while i < text.len() {
+        println!("i: {}", i);
+        let rem = &text[i..];
+        if let Some(start) = rem.find(ESCAPE_START) {
+            deromanize_into(&rem[..start], &mut s);
+            if let Some(end) = rem.find(ESCAPE_END) {
+                s.push_str(&rem[start + ESCAPE_START.len_utf8() .. end]);
+                i += end + ESCAPE_END.len_utf8();
+            } else {
+                s.push_str(&rem[start + ESCAPE_START.len_utf8() ..]);
+                break;
+            }
+        } else {
+            deromanize_into(rem, &mut s);
+            break;
+        }
+    }
+    s
+}
 
 pub fn main() {
     println!("Hello Dero!");
@@ -272,7 +299,7 @@ pub fn main() {
     println!("Vowels: {}", derovow);
     let deroini = deromanize(initials);
     println!("Initials: {}", deroini);
-    let examples = "manhda eobsxeoyo balgda masxiSxeoSxeoyo masyeoSxeoyo yeByn yeoja";
+    let examples = "manhda eobsxeoyo balgda masxiSxeoSxeoyo masyeoSxeoyo yeByn yeoja ijxeobeoryeoSxeoyo";
     for ex in examples.split_whitespace() {
         let dero = deromanize(ex);
         println!("{} => {}", ex, dero);
@@ -281,4 +308,19 @@ pub fn main() {
     // Error: masyeoSxeoyo => 마년어요
     let syeo = Block::from_parts(Initial::S, Vowel::Yeo, Final::Ss).combine();
     println!("Syeo: {}", syeo);
+    
+    let garbage = "astioeangpdurfw:qfujwpk:xlbcmv/2102398473925^9asheynttujfujt";
+    println!("Garbage: {}", deromanize(garbage));
+    // Error: p -> ㅌ
+    // Error: t -> ㅍ
+    let uj = Block::from_parts(Initial::Ieung, Vowel::U, Final::J).combine();
+    println!("Uj: {}", uj);
+    let uch = Block::from_parts(Initial::Ieung, Vowel::U, Final::Ch).combine();
+    println!("Uch: {}", uch);
+    
+    let escaped = deromanize_escaped("annyeoxhaseyo, [Jakob]Si!");
+    println!("Escaped: {}", escaped);
+    
+    let escaped_garbage = "qdp:[rwufa]eonbcmev/[arp]dft[]sa[][][[nhon]]etydrnt";
+    println!("Escaped garbage: {}", deromanize_escaped(escaped_garbage));
 }
