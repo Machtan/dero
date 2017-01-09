@@ -1,28 +1,14 @@
 extern crate hangeul2;
 
-use hangeul2::{Initial, Vowel, Final};
+use hangeul2::{Initial, Vowel, Final, Block};
 
 
 #[derive(Debug)]
 enum DeroState {
     Empty,
-    AfterInitial {
-        initial: Initial,
-    },
-    AfterVowel {
-        initial: Initial,
-        vowel: Vowel,
-    },
-    AfterFirstFinal {
-        initial: Initial,
-        vowel: Vowel,
-        final_: Final,
-    },
-    AfterSecondFinal {
-        initial: Initial,
-        vowel: Vowel,
-        final_: Final,
-    },
+    AfterInitial(Initial),
+    AfterVowel(Initial, Vowel),
+    AfterFinal(Initial, Vowel, Final),
 }
 
 /// Returns a vowel and the number of chars read.
@@ -136,9 +122,9 @@ pub fn read_final(mut text: &str) -> Option<(Final, usize)> {
         (B, Some('s')) => (Final::Bs, 1),
         (B, _) => (Final::B, 0),
         (Bb, _) => return None,
-        (S, _) => (Final::N, 0),
-        (Ss, _) => (Final::N, 0),
-        (Ieung, _) => (Final::N, 0),
+        (S, _) => (Final::S, 0),
+        (Ss, _) => (Final::Ss, 0),
+        (Ieung, _) => (Final::Ieung, 0),
         (J, _) => (Final::J, 0),
         (Jj, _) => return None,
         (Ch, _) => (Final::Ch, 0),
@@ -150,20 +136,113 @@ pub fn read_final(mut text: &str) -> Option<(Final, usize)> {
     Some((fin, flen + len))
 }
 
+#[inline]
+fn skip<I>(iter: &mut I, n: usize) where I: Iterator {
+    for _ in 0..n {
+        iter.next();
+    }
+}
+
 pub fn deromanize(text: &str) -> String {
     use self::DeroState::*;
     let mut s = String::new();
-    let mut state = String::new();
     let mut state = Empty;
-    let mut i = 0;
-    while i < text.len() {
-        match state {
+    let mut chars = text.char_indices().peekable();
+    while let Some(&(i, ch)) = chars.peek() {
+        let rem = &text[i..];
+        //println!("State: {:?}", state);
+        state = match state {
             Empty => {
-
+                if let Some((ini, len)) = read_initial(rem) {
+                    skip(&mut chars, len);
+                    AfterInitial(ini)
+                } else if let Some((vow, len)) = read_vowel(rem) {
+                    skip(&mut chars, len);
+                    AfterVowel(Initial::Ieung, vow)
+                } else {
+                    s.push(ch);
+                    chars.next();
+                    Empty
+                }
             }
-            _ => unimplemented!(),
+            AfterInitial(ini) => {
+                if let Some((nvow, len)) = read_vowel(rem) {
+                    skip(&mut chars, len);
+                    AfterVowel(ini, nvow)
+                } else {
+                    s.push(ini.as_char());
+                    Empty
+                }
+            }
+            AfterVowel(ini, vow) => {
+                if let Some((nfin, len)) = read_final(rem) {
+                    skip(&mut chars, len);
+                    AfterFinal(ini, vow, nfin)
+                } else if let Some((nvow, len)) = read_vowel(rem) {
+                    skip(&mut chars, len);
+                    s.push(Block::from_parts(ini, vow, Final::Empty).combine());
+                    AfterVowel(Initial::Ieung, nvow)
+                // Consonants invalid in final position, ie: Bb
+                } else if let Some((nini, len)) = read_initial(rem) {
+                    skip(&mut chars, len);
+                    s.push(Block::from_parts(ini, vow, Final::Empty).combine());
+                    AfterInitial(nini)
+                } else {
+                    s.push(Block::from_parts(ini, vow, Final::Empty).combine());
+                    s.push(ch);
+                    chars.next();
+                    Empty
+                }
+            }
+            AfterFinal(ini, vow, fin) => {
+                if let Some((nvow, len)) = read_vowel(rem) {
+                    use hangeul2::Final::*;
+                    skip(&mut chars, len);
+                    let (fin, nini) = match fin {
+                        G => (Empty, Initial::G),
+                        Gg => (Empty, Initial::Gg),
+                        Gs => (G, Initial::S),
+                        N => (Empty, Initial::N),
+                        Nj => (N, Initial::J),
+                        Nh => (N, Initial::H),
+                        D => (Empty, Initial::D),
+                        L => (Empty, Initial::R),
+                        Lg => (L, Initial::G),
+                        Lm => (L, Initial::M),
+                        Lb => (L, Initial::B),
+                        Ls => (L, Initial::S),
+                        Lt => (L, Initial::T),
+                        Lp => (L, Initial::P),
+                        Lh => (L, Initial::H),
+                        M => (Empty, Initial::M),
+                        B => (Empty, Initial::B),
+                        Bs => (B, Initial::S),
+                        S => (Empty, Initial::S),
+                        Ss => (Empty, Initial::Ss),
+                        Ieung => (Empty, Initial::Ieung),
+                        J => (Empty, Initial::J),
+                        Ch => (Empty, Initial::Ch),
+                        K => (Empty, Initial::K),
+                        T => (Empty, Initial::T),
+                        P => (Empty, Initial::P),
+                        H => (Empty, Initial::H),
+                        Empty => unreachable!(),
+                    };
+                    s.push(Block::from_parts(ini, vow, fin).combine());
+                    AfterVowel(nini, nvow)
+                } else {
+                    s.push(Block::from_parts(ini, vow, fin).combine());
+                    Empty
+                }
+            }
         }
-    } 
+    }
+    match state {
+        Empty => {}
+        AfterInitial(ini) => s.push(ini.as_char()),
+        AfterVowel(ini, vow) => s.push(Block::from_parts(ini, vow, Final::Empty).combine()),
+        AfterFinal(ini, vow, fin) => s.push(Block::from_parts(ini, vow, fin).combine()),
+    }
     s
 }
 
@@ -189,4 +268,17 @@ pub fn main() {
         println!("Final: '{}' => {:?} |{}|", fintext, fin, len);
         assert!(len == fintext.len());
     }
+    let derovow = deromanize(vowels);
+    println!("Vowels: {}", derovow);
+    let deroini = deromanize(initials);
+    println!("Initials: {}", deroini);
+    let examples = "manhda eobsxeoyo balgda masxiSxeoSxeoyo masyeoSxeoyo yeByn yeoja";
+    for ex in examples.split_whitespace() {
+        let dero = deromanize(ex);
+        println!("{} => {}", ex, dero);
+    }
+    // Error: mashyeoSxeoyo => 만현어요
+    // Error: masyeoSxeoyo => 마년어요
+    let syeo = Block::from_parts(Initial::S, Vowel::Yeo, Final::Ss).combine();
+    println!("Syeo: {}", syeo);
 }
