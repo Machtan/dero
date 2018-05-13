@@ -1,0 +1,6 @@
+[package]
+name = "hangeul2"
+version = "0.1.0"
+authors = ["Jakob Lautrup Nysom <jako3047@gmail.com>"]
+
+[dependencies]
