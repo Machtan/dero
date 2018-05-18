@@ -132,6 +132,10 @@ fn start_interactive(copy: bool, lookup: bool) {
     for c in stdin.keys() {
         match c.unwrap() {
             Key::Char('\n') => {
+                if text == "" {
+                    continue;
+                }
+                
                 let hangeul = dero::deromanize_escaped(&text);
                 
                 if copy {
@@ -150,18 +154,17 @@ fn start_interactive(copy: bool, lookup: bool) {
             }
             Key::Char(ch) => {
                 if pos == text.len() {
+                    text.push(ch);
                     pos += ch.len_utf8();
                 }
-                text.push(ch);
             },
-            //Key::Alt(c) => println!("^{}", c),
             Key::Ctrl(c) => {
                 if c == 'c' {
                     break;
                 }
             }
             Key::Esc => {
-                // clear
+                // clear?
             },
             // Cursor movement
             Key::Left => {
