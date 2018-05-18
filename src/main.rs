@@ -118,7 +118,7 @@ fn start_interactive(copy: bool, lookup: bool) {
     write!(stdout,
         "{}{}dero: ",
         termion::cursor::Goto(1, 3),
-        termion::clear::CurrentLine,
+        termion::clear::AfterCursor,
     ).unwrap();
     
     stdout.flush().unwrap();
@@ -207,14 +207,16 @@ fn start_interactive(copy: bool, lookup: bool) {
         write!(stdout,
             "{}{}dero: {}",
             termion::cursor::Goto(1, 3),
-            termion::clear::CurrentLine,
+            termion::clear::AfterCursor,
             dero::deromanize_escaped(&text),
         ).unwrap();
         
         stdout.flush().unwrap();
     }
 
-    write!(stdout, "{}", termion::cursor::Show).unwrap();
+    write!(stdout, "{}",
+        termion::cursor::Show,
+    ).unwrap();
 }
 
 const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
