@@ -10,3 +10,4 @@ name = "dero"
 [dependencies]
 argonaut = "0.11.0"
 hangeul2 = { path = "hangeul2" }
+termion = "1"

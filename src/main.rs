@@ -1,11 +1,16 @@
-extern crate argonaut;
+extern crate termion;
 extern crate dero;
+extern crate argonaut;
 
-use std::env;
-use std::io::{self, Write};
-use std::process::{self, Command, Stdio};
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
 
 use argonaut::{Parse, ArgDef};
+
+use std::io::{self, Write, stdout, stdin};
+use std::process::{self, Command, Stdio};
+use std::env;
 
 #[cfg(target_os = "macos")]
 fn copy_to_clipboard(text: &str) {
@@ -23,6 +28,7 @@ fn copy_to_clipboard(text: &str) {
     }
     child.wait().expect("Error while running pbcopy");
 }
+
 
 #[cfg(target_os = "macos")]
 fn look_up_word(text: &str) {
@@ -51,30 +57,164 @@ fn convert_single(text: &str, copy: bool, look_up: bool) -> bool {
     true
 }
 
-fn start_interactive(copy: bool, look_up: bool) {
-    println!("Welcome to the deromanization tool.");
-    println!("Write romaja to convert it to 한글.");
-    println!("( Press Ctrl + C to quit )");
-    let mut input = String::new();
-    loop {
-        input.clear();
-        print!("> ");
-        io::stdout().flush().expect("Could not flush stdout");
-        if io::stdin().read_line(&mut input).expect("Could not read from stdin") == 0 {
-            // End of file reached.
-            println!("");
+
+pub struct History {
+    inputs: Vec<String>,
+}
+
+impl History {
+    pub fn new() -> History {
+        History {
+            inputs: Vec::new()
+        }
+    }
+    
+    pub fn len(&self) -> usize {
+        self.inputs.len()
+    }
+    
+    pub fn push(&mut self, input: &str) {
+        if input.trim() == "" {
             return;
         }
-        let output = dero::deromanize_escaped(&input);
-        let trimmed = output.trim_right();
-        if copy {
-            copy_to_clipboard(trimmed);
+        let push = if let Some(ref inp) = self.inputs.last() {
+            inp.as_str() != input.trim()
+        }  else {
+            true
+        };
+        if push {
+            self.inputs.push(input.trim().to_string());
         }
-        if look_up {
-            look_up_word(trimmed);
-        }
-        println!("=> {}", trimmed);
     }
+    
+    pub fn is_empty(&self) -> bool {
+        self.inputs.len() == 0
+    }
+    
+    pub fn get(&self, index: usize) -> Option<&String> {
+        self.inputs.get(index)
+    }
+}
+
+
+
+fn start_interactive(copy: bool, lookup: bool) {
+    let stdin = stdin();
+    let mut stdout = stdout().into_raw_mode().unwrap();
+
+    write!(stdout,
+           "{}{}Welcome to dero. Use Ctrl-C to quit.",
+           termion::clear::All,
+           termion::cursor::Goto(1, 1),
+           // {} termion::cursor::Hide
+    ).unwrap();
+    
+    write!(stdout,
+        "{}{}Write romaja to convert it to 한글.",
+        termion::cursor::Goto(1,2),
+        termion::clear::CurrentLine,
+    ).unwrap();
+    
+    write!(stdout,
+        "{}{}dero: ",
+        termion::cursor::Goto(1, 3),
+        termion::clear::CurrentLine,
+    ).unwrap();
+    
+    stdout.flush().unwrap();
+    
+    let mut text = String::new();
+    let mut pos = 0;
+    let mut history = History::new();
+    let mut history_index = 0;
+    
+    
+    for c in stdin.keys() {
+        match c.unwrap() {
+            Key::Char('\n') => {
+                let hangeul = dero::deromanize_escaped(&text);
+                
+                if copy {
+                    copy_to_clipboard(&hangeul);
+                }
+                
+                if lookup {
+                    look_up_word(&hangeul);
+                }
+                
+                history.push(&text);
+                history_index = history.len();
+                
+                text.clear();
+                pos = text.len();
+            }
+            Key::Char(ch) => {
+                if pos == text.len() {
+                    pos += ch.len_utf8();
+                }
+                text.push(ch);
+            },
+            //Key::Alt(c) => println!("^{}", c),
+            Key::Ctrl(c) => {
+                if c == 'c' {
+                    break;
+                }
+            }
+            Key::Esc => {
+                // clear
+            },
+            // Cursor movement
+            Key::Left => {
+                // move back one translated character
+            },
+            Key::Right => {
+                
+            },
+            Key::Up => {
+                if history_index > 0 {
+                    history_index -= 1;
+                    text = history.get(history_index).unwrap().to_string();
+                    pos = text.len();
+                }
+            },
+            Key::Down => {
+                if history_index + 1 >= history.len() {
+                    text.clear();
+                    pos = text.len();
+                    if history_index < history.len() {
+                        history_index = history.len();
+                    }
+                } else {
+                    history_index += 1;
+                    text = history.get(history_index).unwrap().to_string();
+                    pos = text.len();
+                }
+            },
+            // Delete back one source character
+            Key::Backspace => {
+                if ! text.is_empty() {
+                    if pos == text.len() {
+                        text.pop();
+                        pos -= 1;
+                    } else {
+                        // TODO    
+                    }
+                }
+            },
+            _ => {}
+        }
+        
+        write!(stdout,
+            "{}{}dero: {}",
+            termion::cursor::Goto(1, 3),
+            termion::clear::CurrentLine,
+            dero::deromanize_escaped(&text),
+        ).unwrap();
+        
+        stdout.flush().unwrap();
+    }
+
+    write!(stdout, "{}", termion::cursor::Show).unwrap();
 }
 
 const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
@@ -144,3 +284,4 @@ fn main() {
         }
     }
 }
+
