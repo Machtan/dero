@@ -11,10 +11,12 @@ use argonaut::{Parse, ArgDef};
 use std::io::{self, Write, stdout, stdin};
 use std::process::{self, Command, Stdio};
 use std::env;
+use std::fs::OpenOptions;
+use std::path::Path;
+use std::error::Error;
 
 #[cfg(target_os = "macos")]
 fn copy_to_clipboard(text: &str) {
-    // println!("Copying '{}' to the clipboard...", text);
     let mut child = Command::new("/usr/bin/pbcopy")
         .arg(text)
         .stdin(Stdio::piped())
@@ -28,6 +30,8 @@ fn copy_to_clipboard(text: &str) {
     }
     child.wait().expect("Error while running pbcopy");
 }
+
+
 
 
 #[cfg(target_os = "macos")]
@@ -45,16 +49,37 @@ fn copy_to_clipboard(text: &str) {}
 #[cfg(not(target_os = "macos"))]
 fn look_up_word(text: &str) {}
 
-fn convert_single(text: &str, copy: bool, look_up: bool) -> bool {
+fn convert_single(text: &str, copy: bool, look_up: bool, append_file: Option<String>) -> bool {
     let output = dero::deromanize_escaped(text);
     println!("{}", &output);
     if copy {
         copy_to_clipboard(&output);
     }
+    
     if look_up {
         look_up_word(&output);
     }
+    if let Some(ref file) = append_file {
+        let path = Path::new(file);
+        append_to_file(path, &output);
+    }
     true
+}
+
+fn append_to_file(file: &Path, text: &str) {
+    match OpenOptions::new().create(true).append(true).open(file) {
+        Ok(mut file) => {
+            match writeln!(file, "{}", text) {
+                Ok(_) => {}
+                Err(err) => {
+                    eprintln!("Could not write to file: {}", err.description());
+                }
+            }
+        }
+        Err(err) => {
+            eprintln!("Could not open file: {}", err.description());
+        }
+    }
 }
 
 
@@ -98,7 +123,7 @@ impl History {
 
 
 
-fn start_interactive(copy: bool, lookup: bool) {
+fn start_interactive(copy: bool, lookup: bool, append_file: Option<String>) {
     let stdin = stdin();
     let mut stdout = stdout().into_raw_mode().unwrap();
 
@@ -144,6 +169,11 @@ fn start_interactive(copy: bool, lookup: bool) {
                 
                 if lookup {
                     look_up_word(&hangeul);
+                }
+                
+                if let Some(ref file) = append_file {
+                    let path = Path::new(file);
+                    append_to_file(path, &hangeul);
                 }
                 
                 history.push(&text);
@@ -238,8 +268,9 @@ fn main() {
     let a_lookup = ArgDef::named_and_short("look-up", 'l').switch();
     let a_no_copy = ArgDef::named("no-copy").switch();
     let a_version = ArgDef::named("version").switch();
+    let a_append = ArgDef::named_and_short("append-to-file", 'a').option();
     let a_help = ArgDef::named_and_short("help", 'h').switch();
-    let expected = &[a_text_parts, a_lookup, a_version, a_help, a_no_copy];
+    let expected = &[a_text_parts, a_append, a_lookup, a_version, a_help, a_no_copy];
 
     let args: Vec<_> = env::args().skip(1).collect();
     let parse = Parse::new(expected, &args).expect("Invalid definitions");
@@ -247,6 +278,7 @@ fn main() {
     let mut parts = Vec::new();
     let mut copy_text = true;
     let mut look_up = false;
+    let mut append_file = None;
 
     for item in parse {
         match item {
@@ -266,6 +298,9 @@ fn main() {
             Ok(Switch("no-copy")) => {
                 copy_text = false;
             }
+            Ok(Option("append-to-file", value)) => {
+                append_file = Some(value.to_string());
+            }
             Ok(Switch("help")) => {
                 println!("{}\n\n{}", USAGE, HELP);
                 return;
@@ -279,13 +314,13 @@ fn main() {
     }
 
     if parts.is_empty() {
-        start_interactive(copy_text, look_up);
+        start_interactive(copy_text, look_up, append_file);
         return;
-    }
-
-    for part in parts {
-        if convert_single(part, copy_text, look_up) != true {
-            process::exit(1);
+    } else {
+        for part in parts {
+            if convert_single(part, copy_text, look_up, append_file.clone()) != true {
+                process::exit(1);
+            }
         }
     }
 }
