@@ -31,8 +31,17 @@ fn copy_to_clipboard(text: &str) {
     child.wait().expect("Error while running pbcopy");
 }
 
+#[cfg(target_os = "macos")]
+fn activate_anki() {
+    Command::new("osascript")
+        .arg("-e").arg("tell application \"Anki\"")
+        .arg("-e").arg("Activate")
+        .arg("-e").arg("end tell")
+        .status().expect("Could not run AppleScript");
+}
 
-
+#[cfg(not(target_os = "macos"))]
+fn activate_anki() {}
 
 #[cfg(target_os = "macos")]
 fn look_up_word(text: &str) {
@@ -49,7 +58,7 @@ fn copy_to_clipboard(text: &str) {}
 #[cfg(not(target_os = "macos"))]
 fn look_up_word(text: &str) {}
 
-fn convert_single(text: &str, copy: bool, look_up: bool, append_file: Option<String>) -> bool {
+fn convert_single(text: &str, copy: bool, look_up: bool, append_file: Option<String>, anki: bool) -> bool {
     let output = dero::deromanize_escaped(text);
     println!("{}", &output);
     if copy {
@@ -59,6 +68,11 @@ fn convert_single(text: &str, copy: bool, look_up: bool, append_file: Option<Str
     if look_up {
         look_up_word(&output);
     }
+    
+    if anki {
+        activate_anki();
+    }
+    
     if let Some(ref file) = append_file {
         let path = Path::new(file);
         append_to_file(path, &output);
@@ -123,7 +137,7 @@ impl History {
 
 
 
-fn start_interactive(copy: bool, lookup: bool, append_file: Option<String>) {
+fn start_interactive(copy: bool, lookup: bool, append_file: Option<String>, anki: bool) {
     let stdin = stdin();
     let mut stdout = stdout().into_raw_mode().unwrap();
 
@@ -169,6 +183,10 @@ fn start_interactive(copy: bool, lookup: bool, append_file: Option<String>) {
                 
                 if lookup {
                     look_up_word(&hangeul);
+                }
+                
+                if anki {
+                    activate_anki();
                 }
                 
                 if let Some(ref file) = append_file {
@@ -257,6 +275,7 @@ const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
 const HELP: &'static str = r#"Optional arguments:
   --look-up | -l TEXT   Deromanize TEXT and look up the result in the OS X
                         dictionary.
+  --anki | -n           Activate ANKI after converting the text.
   --version             Show the version of dero.
   --help | -h           Show this help message.
   --no-copy             Do not copy the results to clipboard."#;
@@ -266,11 +285,12 @@ fn main() {
 
     let a_text_parts = ArgDef::optional_trail();
     let a_lookup = ArgDef::named_and_short("look-up", 'l').switch();
+    let a_anki = ArgDef::named_and_short("anki", 'n').switch();
     let a_no_copy = ArgDef::named("no-copy").switch();
     let a_version = ArgDef::named("version").switch();
     let a_append = ArgDef::named_and_short("append-to-file", 'a').option();
     let a_help = ArgDef::named_and_short("help", 'h').switch();
-    let expected = &[a_text_parts, a_append, a_lookup, a_version, a_help, a_no_copy];
+    let expected = &[a_text_parts, a_append, a_anki, a_lookup, a_version, a_help, a_no_copy];
 
     let args: Vec<_> = env::args().skip(1).collect();
     let parse = Parse::new(expected, &args).expect("Invalid definitions");
@@ -279,6 +299,7 @@ fn main() {
     let mut copy_text = true;
     let mut look_up = false;
     let mut append_file = None;
+    let mut anki = false;
 
     for item in parse {
         match item {
@@ -294,6 +315,7 @@ fn main() {
             Ok(TrailPart(value)) => {
                 parts.push(value);
             }
+            Ok(Switch("anki")) => anki = true,
             Ok(Switch("look-up")) => look_up = true,
             Ok(Switch("no-copy")) => {
                 copy_text = false;
@@ -314,11 +336,11 @@ fn main() {
     }
 
     if parts.is_empty() {
-        start_interactive(copy_text, look_up, append_file);
+        start_interactive(copy_text, look_up, append_file, anki);
         return;
     } else {
         for part in parts {
-            if convert_single(part, copy_text, look_up, append_file.clone()) != true {
+            if convert_single(part, copy_text, look_up, append_file.clone(), anki) != true {
                 process::exit(1);
             }
         }
