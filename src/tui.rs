@@ -62,27 +62,26 @@ impl History {
 
 const DEFAULT_HISTORY_SIZE: usize = 64;
 
-pub fn start_interactive_loop<F: FnMut(&str)>(on_deromanize: &mut F) {
+pub fn start_interactive_loop<F: FnMut(&str)>(initial_message: &str, prompt: &str, on_deromanize: &mut F) {
     let stdin = stdin();
     let mut stdout = stdout().into_raw_mode().unwrap();
-
-    write!(stdout,
-           "{}{}Welcome to dero. Use Ctrl-C to quit.",
-           termion::clear::All,
-           termion::cursor::Goto(1, 1),
-           // {} termion::cursor::Hide
-    ).unwrap();
     
-    write!(stdout,
-        "{}{}Write romaja to convert it to 한글.",
-        termion::cursor::Goto(1,2),
-        termion::clear::CurrentLine,
-    ).unwrap();
-    
-    write!(stdout,
-        "{}{}dero: ",
-        termion::cursor::Goto(1, 3),
+    write!(stdout, "{}{}", 
+        termion::cursor::Goto(1, 1),
         termion::clear::AfterCursor,
+    );
+    let mut lineno = 1;
+    for (i, line) in initial_message.lines().enumerate() {
+        write!(stdout, "{}", termion::cursor::Goto(1, (i+1) as u16));
+        write!(stdout, "{}", line);
+        lineno += 1;
+    }
+    
+    write!(stdout,
+        "{}{}{}",
+        termion::cursor::Goto(1, lineno as u16),
+        termion::clear::AfterCursor,
+        prompt,
     ).unwrap();
     
     stdout.flush().unwrap();
@@ -91,7 +90,6 @@ pub fn start_interactive_loop<F: FnMut(&str)>(on_deromanize: &mut F) {
     let mut pos = 0;
     let mut history = History::new(DEFAULT_HISTORY_SIZE);
     let mut history_index = 0;
-    
     
     for c in stdin.keys() {
         match c.unwrap() {
@@ -166,9 +164,10 @@ pub fn start_interactive_loop<F: FnMut(&str)>(on_deromanize: &mut F) {
         }
         
         write!(stdout,
-            "{}{}dero: {}",
+            "{}{}{}{}",
             termion::cursor::Goto(1, 3),
             termion::clear::AfterCursor,
+            prompt,
             deromanize_escaped(&text),
         ).unwrap();
         

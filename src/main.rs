@@ -157,7 +157,10 @@ fn main() {
     }
 
     if parts.is_empty() {
-        dero::start_interactive_loop(&mut |hangeul| {
+        let message = "Welcome to dero. Use Ctrl-C to quit.\
+        \nWrite romaja to convert it to 한글.";
+        let prompt = "dero: ";
+        dero::start_interactive_loop(message, prompt, &mut |hangeul| {
             if copy_text {
                 copy_to_clipboard(&hangeul);
             }
