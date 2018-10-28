@@ -6,8 +6,16 @@ version = "0.3.0"
 [[bin]]
 doc = false
 name = "dero"
+required-features = ["tui"]
+
+[features]
+tui = ["termion"]
 
 [dependencies]
 argonaut = "0.11.0"
 hangeul2 = { path = "hangeul2" }
-termion = "1"
+
+termion = { version = "1", optional = true }
+
+
+

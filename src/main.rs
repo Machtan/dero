@@ -1,14 +1,9 @@
-extern crate termion;
 extern crate dero;
 extern crate argonaut;
 
-use termion::event::Key;
-use termion::input::TermRead;
-use termion::raw::IntoRawMode;
-
 use argonaut::{Parse, ArgDef};
 
-use std::io::{self, Write, stdout, stdin};
+use std::io::{self, Write};
 use std::process::{self, Command, Stdio};
 use std::env;
 use std::fs::OpenOptions;
@@ -96,180 +91,6 @@ fn append_to_file(file: &Path, text: &str) {
     }
 }
 
-
-pub struct History {
-    inputs: Vec<String>,
-}
-
-impl History {
-    pub fn new() -> History {
-        History {
-            inputs: Vec::new()
-        }
-    }
-    
-    pub fn len(&self) -> usize {
-        self.inputs.len()
-    }
-    
-    pub fn push(&mut self, input: &str) {
-        if input.trim() == "" {
-            return;
-        }
-        let push = if let Some(ref inp) = self.inputs.last() {
-            inp.as_str() != input.trim()
-        }  else {
-            true
-        };
-        if push {
-            self.inputs.push(input.trim().to_string());
-        }
-    }
-    
-    pub fn is_empty(&self) -> bool {
-        self.inputs.len() == 0
-    }
-    
-    pub fn get(&self, index: usize) -> Option<&String> {
-        self.inputs.get(index)
-    }
-}
-
-
-
-fn start_interactive(copy: bool, lookup: bool, append_file: Option<String>, anki: bool) {
-    let stdin = stdin();
-    let mut stdout = stdout().into_raw_mode().unwrap();
-
-    write!(stdout,
-           "{}{}Welcome to dero. Use Ctrl-C to quit.",
-           termion::clear::All,
-           termion::cursor::Goto(1, 1),
-           // {} termion::cursor::Hide
-    ).unwrap();
-    
-    write!(stdout,
-        "{}{}Write romaja to convert it to 한글.",
-        termion::cursor::Goto(1,2),
-        termion::clear::CurrentLine,
-    ).unwrap();
-    
-    write!(stdout,
-        "{}{}dero: ",
-        termion::cursor::Goto(1, 3),
-        termion::clear::AfterCursor,
-    ).unwrap();
-    
-    stdout.flush().unwrap();
-    
-    let mut text = String::new();
-    let mut pos = 0;
-    let mut history = History::new();
-    let mut history_index = 0;
-    
-    
-    for c in stdin.keys() {
-        match c.unwrap() {
-            Key::Char('\n') => {
-                if text == "" {
-                    continue;
-                }
-                
-                let hangeul = dero::deromanize_escaped(&text);
-                
-                if copy {
-                    copy_to_clipboard(&hangeul);
-                }
-                
-                if lookup {
-                    look_up_word(&hangeul);
-                }
-                
-                if anki {
-                    activate_anki();
-                }
-                
-                if let Some(ref file) = append_file {
-                    let path = Path::new(file);
-                    append_to_file(path, &hangeul);
-                }
-                
-                history.push(&text);
-                history_index = history.len();
-                
-                text.clear();
-                pos = text.len();
-            }
-            Key::Char(ch) => {
-                if pos == text.len() {
-                    text.push(ch);
-                    pos += ch.len_utf8();
-                }
-            },
-            Key::Ctrl(c) => {
-                if c == 'c' {
-                    break;
-                }
-            }
-            Key::Esc => {
-                // clear?
-            },
-            // Cursor movement
-            Key::Left => {
-                // move back one translated character
-            },
-            Key::Right => {
-                
-            },
-            Key::Up => {
-                if history_index > 0 {
-                    history_index -= 1;
-                    text = history.get(history_index).unwrap().to_string();
-                    pos = text.len();
-                }
-            },
-            Key::Down => {
-                if history_index + 1 >= history.len() {
-                    text.clear();
-                    pos = text.len();
-                    if history_index < history.len() {
-                        history_index = history.len();
-                    }
-                } else {
-                    history_index += 1;
-                    text = history.get(history_index).unwrap().to_string();
-                    pos = text.len();
-                }
-            },
-            // Delete back one source character
-            Key::Backspace => {
-                if ! text.is_empty() {
-                    if pos == text.len() {
-                        text.pop();
-                        pos -= 1;
-                    } else {
-                        // TODO    
-                    }
-                }
-            },
-            _ => {}
-        }
-        
-        write!(stdout,
-            "{}{}dero: {}",
-            termion::cursor::Goto(1, 3),
-            termion::clear::AfterCursor,
-            dero::deromanize_escaped(&text),
-        ).unwrap();
-        
-        stdout.flush().unwrap();
-    }
-
-    write!(stdout, "{}",
-        termion::cursor::Show,
-    ).unwrap();
-}
-
 const USAGE: &'static str = "Usage: dero [--help | OPTIONS]";
 
 const HELP: &'static str = r#"Optional arguments:
@@ -336,7 +157,24 @@ fn main() {
     }
 
     if parts.is_empty() {
-        start_interactive(copy_text, look_up, append_file, anki);
+        dero::start_interactive_loop(&mut |hangeul| {
+            if copy_text {
+                copy_to_clipboard(&hangeul);
+            }
+            
+            if look_up {
+                look_up_word(&hangeul);
+            }
+            
+            if anki {
+                activate_anki();
+            }
+            
+            if let Some(ref file) = append_file {
+                let path = Path::new(file);
+                append_to_file(path, &hangeul);
+            }
+        });
         return;
     } else {
         for part in parts {

@@ -40,8 +40,16 @@
 //! 
 //!   Ex: `jinJa, kkkkkkk` => `진짜, ㅋㅋㅋㅋㅋㅋㅋ`
 extern crate hangeul2;
+#[cfg(feature = "tui")]
+extern crate termion;
 
 use hangeul2::{Initial, Vowel, Final, Block};
+
+#[cfg(feature = "tui")]
+pub mod tui;
+
+#[cfg(feature = "tui")]
+pub use tui::start_interactive_loop;
 
 
 #[derive(Debug)]
