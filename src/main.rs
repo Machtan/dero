@@ -10,21 +10,44 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::error::Error;
 
-#[cfg(target_os = "macos")]
 fn copy_to_clipboard(text: &str) {
-    let mut child = Command::new("/usr/bin/pbcopy")
-        .arg(text)
-        .stdin(Stdio::piped())
-        .spawn()
-        .expect("Could not run pbcopy");
-    if let Some(ref mut stdin) = child.stdin {
-        stdin.write_all(text.as_bytes())
-            .expect("Could not write to pbcopy");
+    if cfg!(target_os = "macos") {
+        let mut child = Command::new("/usr/bin/pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("Could not run pbcopy");
+        if let Some(ref mut stdin) = child.stdin {
+            stdin.write_all(text.as_bytes())
+                .expect("Could not write to pbcopy");
+        } else {
+            unreachable!();
+        }
+        child.wait().expect("Error while running pbcopy");
+
+    } else if cfg!(target_os = "linux") {
+        let mut child = Command::new("/usr/bin/xclip")
+            .arg("-selection")
+            .arg("clip-board")
+            .stdin(Stdio::piped())
+            .spawn()
+            .expect("Could not run xclip");
+        if let Some(ref mut stdin) = child.stdin {
+            stdin.write_all(text.as_bytes())
+                .expect("Could not write to xclip");
+        } else {
+            unreachable!();
+        }
+        child.wait().expect("Error while running pbcopy");
+    
     } else {
-        unreachable!();
+
     }
-    child.wait().expect("Error while running pbcopy");
+    
 }
+
+
+#[cfg(not(target_os = "macos"))]
+fn activate_anki() {}
 
 #[cfg(target_os = "macos")]
 fn activate_anki() {
@@ -34,9 +57,6 @@ fn activate_anki() {
         .arg("-e").arg("end tell")
         .status().expect("Could not run AppleScript");
 }
-
-#[cfg(not(target_os = "macos"))]
-fn activate_anki() {}
 
 #[cfg(target_os = "macos")]
 fn look_up_word(text: &str) {
@@ -48,10 +68,7 @@ fn look_up_word(text: &str) {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn copy_to_clipboard(text: &str) {}
-
-#[cfg(not(target_os = "macos"))]
-fn look_up_word(text: &str) {}
+fn look_up_word(_text: &str) {}
 
 fn convert_single(text: &str, copy: bool, look_up: bool, append_file: Option<String>, anki: bool) -> bool {
     let output = dero::deromanize_escaped(text);
